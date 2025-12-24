@@ -1,0 +1,365 @@
+package com.perez.dutchlearner
+
+import android.Manifest
+import android.content.pm.PackageManager
+import android.media.MediaRecorder
+import android.os.Bundle
+import android.speech.tts.TextToSpeech
+import android.widget.Toast
+import androidx.activity.ComponentActivity
+import androidx.activity.compose.setContent
+import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.foundation.layout.*
+import androidx.compose.material3.*
+import androidx.compose.runtime.*
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.unit.dp
+import androidx.core.content.ContextCompat
+import androidx.lifecycle.lifecycleScope
+import com.perez.dutchlearner.database.AppDatabase
+import com.perez.dutchlearner.database.PhraseEntity
+import com.perez.dutchlearner.translation.TranslationServiceProvider
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
+import java.io.File
+import java.util.*
+
+class MainActivity : ComponentActivity(), TextToSpeech.OnInitListener {
+
+    private var mediaRecorder: MediaRecorder? = null
+    private var audioFile: File? = null
+    private var isRecording = false
+    private var tts: TextToSpeech? = null
+    private var ttsReady = false
+
+
+    // Servicios
+    private val translationService by lazy {
+        TranslationServiceProvider.getInstance(this)
+    }
+    private val database by lazy {
+        AppDatabase.getDatabase(this)
+    }
+
+    private val recordPermissionLauncher = registerForActivityResult(
+        ActivityResultContracts.RequestPermission()
+    ) { isGranted ->
+        if (!isGranted) {
+            Toast.makeText(this, "Permiso de micrófono necesario", Toast.LENGTH_SHORT).show()
+        }
+    }
+
+    override fun onCreate(savedInstanceState: Bundle?) {
+        super.onCreate(savedInstanceState)
+
+        // Inicializar TTS
+        tts = TextToSpeech(this, this)
+
+        // Solicitar permisos
+        checkPermissions()
+
+        setContent {
+            MaterialTheme {
+                Surface(
+                    modifier = Modifier.fillMaxSize(),
+                    color = MaterialTheme.colorScheme.background
+                ) {
+                    RecorderScreen()
+                }
+            }
+        }
+    }
+
+    @Composable
+    fun RecorderScreen() {
+        var isRecordingState by remember { mutableStateOf(false) }
+        var transcribedText by remember { mutableStateOf("") }
+        var translatedText by remember { mutableStateOf("") }
+        var isProcessing by remember { mutableStateOf(false) }
+        var errorMessage by remember { mutableStateOf<String?>(null) }
+        var statusMessage by remember { mutableStateOf("") }
+
+        Column(
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(24.dp),
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.spacedBy(16.dp)
+        ) {
+            Text(
+                text = "🇳🇱 Dutch Learner",
+                style = MaterialTheme.typography.headlineMedium
+            )
+
+            if (statusMessage.isNotEmpty()) {
+                Text(
+                    text = statusMessage,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.primary
+                )
+            }
+
+            Spacer(modifier = Modifier.height(32.dp))
+
+            // Botón de grabación
+            Button(
+                onClick = {
+                    if (!isRecordingState) {
+                        startRecording()
+                        isRecordingState = true
+                        errorMessage = null
+                        statusMessage = "🎤 Grabando..."
+                    } else {
+                        stopRecording()
+                        isRecordingState = false
+                        isProcessing = true
+                        statusMessage = "⏳ Procesando audio..."
+
+                        // Procesar audio
+                        lifecycleScope.launch {
+                            try {
+                                // Paso 1: Transcribir
+                                statusMessage = "📝 Transcribiendo..."
+                                val spanish = transcribeAudio()
+
+                                if (spanish.isEmpty()) {
+                                    errorMessage = "No se pudo transcribir el audio"
+                                    isProcessing = false
+                                    statusMessage = ""
+                                    return@launch
+                                }
+
+                                transcribedText = spanish
+
+                                // Paso 2: Traducir
+                                statusMessage = "🌐 Traduciendo..."
+                                val result = translationService.translateToNL(spanish)
+
+                                result.onSuccess { dutch ->
+                                    translatedText = dutch
+                                    errorMessage = null
+                                    statusMessage = "✅ ¡Listo!"
+                                }.onFailure { e ->
+                                    errorMessage = "Error de traducción: ${e.message}"
+                                    statusMessage = ""
+                                }
+
+                            } catch (e: Exception) {
+                                errorMessage = "Error: ${e.message}"
+                                statusMessage = ""
+                            } finally {
+                                isProcessing = false
+                            }
+                        }
+                    }
+                },
+                modifier = Modifier.size(120.dp),
+                colors = ButtonDefaults.buttonColors(
+                    containerColor = if (isRecordingState)
+                        MaterialTheme.colorScheme.error
+                    else
+                        MaterialTheme.colorScheme.primary
+                ),
+                enabled = !isProcessing
+            ) {
+                Text(
+                    text = if (isRecordingState) "⏹\nDetener" else "🎤\nGrabar",
+                    style = MaterialTheme.typography.titleMedium
+                )
+            }
+
+            if (isProcessing) {
+                CircularProgressIndicator()
+            }
+
+            // Mensajes de error
+            if (errorMessage != null) {
+                Card(
+                    modifier = Modifier.fillMaxWidth(),
+                    colors = CardDefaults.cardColors(
+                        containerColor = MaterialTheme.colorScheme.errorContainer
+                    )
+                ) {
+                    Text(
+                        text = errorMessage!!,
+                        modifier = Modifier.padding(16.dp),
+                        color = MaterialTheme.colorScheme.onErrorContainer
+                    )
+                }
+            }
+
+            // Resultados
+            if (transcribedText.isNotEmpty()) {
+                Card(
+                    modifier = Modifier.fillMaxWidth(),
+                    colors = CardDefaults.cardColors(
+                        containerColor = MaterialTheme.colorScheme.secondaryContainer
+                    )
+                ) {
+                    Column(modifier = Modifier.padding(16.dp)) {
+                        Text(
+                            text = "🇪🇸 Español:",
+                            style = MaterialTheme.typography.titleSmall,
+                            color = MaterialTheme.colorScheme.onSecondaryContainer
+                        )
+                        Text(
+                            text = transcribedText,
+                            style = MaterialTheme.typography.bodyLarge
+                        )
+                    }
+                }
+            }
+
+            if (translatedText.isNotEmpty()) {
+                Card(
+                    modifier = Modifier.fillMaxWidth(),
+                    colors = CardDefaults.cardColors(
+                        containerColor = MaterialTheme.colorScheme.tertiaryContainer
+                    )
+                ) {
+                    Column(modifier = Modifier.padding(16.dp)) {
+                        Text(
+                            text = "🇳🇱 Nederlands:",
+                            style = MaterialTheme.typography.titleSmall,
+                            color = MaterialTheme.colorScheme.onTertiaryContainer
+                        )
+                        Text(
+                            text = translatedText,
+                            style = MaterialTheme.typography.bodyLarge
+                        )
+
+                        Spacer(modifier = Modifier.height(8.dp))
+
+                        Button(
+                            onClick = { speakDutch(translatedText) },
+                            enabled = ttsReady
+                        ) {
+                            Text("🔊 Escuchar pronunciación")
+                        }
+                    }
+                }
+
+                Button(
+                    onClick = {
+                        lifecycleScope.launch {
+                            savePhraseToDatabase(transcribedText, translatedText)
+                            Toast.makeText(
+                                this@MainActivity,
+                                "✅ Frase guardada",
+                                Toast.LENGTH_SHORT
+                            ).show()
+                        }
+                    },
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Text("💾 Guardar frase")
+                }
+            }
+        }
+    }
+
+    private fun checkPermissions() {
+        if (ContextCompat.checkSelfPermission(
+                this,
+                Manifest.permission.RECORD_AUDIO
+            ) != PackageManager.PERMISSION_GRANTED
+        ) {
+            recordPermissionLauncher.launch(Manifest.permission.RECORD_AUDIO)
+        }
+    }
+
+    private fun startRecording() {
+        try {
+            audioFile = File(cacheDir, "recording_${System.currentTimeMillis()}.3gp")
+
+            // Usar MediaRecorder moderno (API 31+) o legacy
+            mediaRecorder = if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.S) {
+                MediaRecorder(this)
+            } else {
+                @Suppress("DEPRECATION")
+                MediaRecorder()
+            }.apply {
+                setAudioSource(MediaRecorder.AudioSource.MIC)
+                setOutputFormat(MediaRecorder.OutputFormat.THREE_GPP)
+                setAudioEncoder(MediaRecorder.AudioEncoder.AMR_NB)
+                setOutputFile(audioFile?.absolutePath)
+                prepare()
+                start()
+            }
+
+            isRecording = true
+        } catch (e: Exception) {
+            e.printStackTrace()
+            Toast.makeText(this, "Error al grabar: ${e.message}", Toast.LENGTH_SHORT).show()
+        }
+    }
+
+    private fun stopRecording() {
+        try {
+            mediaRecorder?.apply {
+                stop()
+                release()
+            }
+            mediaRecorder = null
+            isRecording = false
+        } catch (e: Exception) {
+            e.printStackTrace()
+        }
+    }
+
+    private suspend fun transcribeAudio(): String = withContext(Dispatchers.IO) {
+        // PLACEHOLDER: Integración con Vosk
+        // Por ahora, simulamos transcripción para testing
+        // Aquí integrarás VoskSpeechRecognizer cuando descargues el modelo
+
+        return@withContext "Hola, quiero aprender holandés" // Texto de prueba
+    }
+
+    private suspend fun savePhraseToDatabase(spanish: String, dutch: String) {
+        withContext(Dispatchers.IO) {
+            val phrase = PhraseEntity(
+                spanishText = spanish,
+                dutchText = dutch,
+                unknownWordsCount = 0, // TODO: calcular palabras desconocidas
+                unknownWords = ""
+            )
+            database.phraseDao().insertPhrase(phrase)
+        }
+    }
+
+    override fun onInit(status: Int) {
+        if (status == TextToSpeech.SUCCESS) {
+            val result = tts?.setLanguage(Locale("nl", "NL"))
+            ttsReady = result != TextToSpeech.LANG_MISSING_DATA &&
+                    result != TextToSpeech.LANG_NOT_SUPPORTED
+
+            if (!ttsReady) {
+                Toast.makeText(
+                    this,
+                    "Por favor instala voces en holandés:\nConfiguración > Idioma > Texto a voz",
+                    Toast.LENGTH_LONG
+                ).show()
+            }
+        }
+    }
+
+    private fun speakDutch(text: String) {
+        if (ttsReady) {
+            tts?.speak(text, TextToSpeech.QUEUE_FLUSH, null, null)
+        } else {
+            Toast.makeText(
+                this,
+                "Voces en holandés no disponibles",
+                Toast.LENGTH_SHORT
+            ).show()
+        }
+    }
+
+    override fun onDestroy() {
+        tts?.stop()
+        tts?.shutdown()
+        super.onDestroy()
+    }
+}
