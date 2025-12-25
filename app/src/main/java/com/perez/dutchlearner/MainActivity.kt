@@ -9,6 +9,8 @@ import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.*
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.List
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -16,11 +18,16 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.lifecycleScope
+import androidx.navigation.compose.NavHost
+import androidx.navigation.compose.composable
+import androidx.navigation.compose.rememberNavController
 import com.perez.dutchlearner.audio.AudioRecorderHelper
 import com.perez.dutchlearner.database.AppDatabase
 import com.perez.dutchlearner.database.PhraseEntity
 import com.perez.dutchlearner.translation.TranslationServiceProvider
+import com.perez.dutchlearner.ui.PhrasesScreen
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.flow.firstOrNull
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.io.File
@@ -88,12 +95,7 @@ class MainActivity : ComponentActivity(), TextToSpeech.OnInitListener {
 
             setContent {
                 MaterialTheme {
-                    Surface(
-                        modifier = Modifier.fillMaxSize(),
-                        color = MaterialTheme.colorScheme.background
-                    ) {
-                        RecorderScreen()
-                    }
+                    AppNavigation()
                 }
             }
             android.util.Log.d("DutchLearner", "UI set successfully")
@@ -104,7 +106,46 @@ class MainActivity : ComponentActivity(), TextToSpeech.OnInitListener {
     }
 
     @Composable
-    fun RecorderScreen() {
+    fun AppNavigation() {
+        val navController = rememberNavController()
+
+        NavHost(navController = navController, startDestination = "recorder") {
+            composable("recorder") {
+                Surface(
+                    modifier = Modifier.fillMaxSize(),
+                    color = MaterialTheme.colorScheme.background
+                ) {
+                    RecorderScreen(
+                        onNavigateToPhrases = {
+                            navController.navigate("phrases")
+                        }
+                    )
+                }
+            }
+
+            composable("phrases") {
+                val phrases by database?.phraseDao()?.getAllPhrasesByDate()?.collectAsState(initial = emptyList())
+                    ?: remember { mutableStateOf(emptyList()) }
+
+                PhrasesScreen(
+                    phrases = phrases,
+                    onNavigateBack = { navController.popBackStack() },
+                    onDeletePhrase = { phrase ->
+                        lifecycleScope.launch {
+                            withContext(Dispatchers.IO) {
+                                database?.phraseDao()?.deletePhrase(phrase)
+                            }
+                        }
+                    },
+                    onSpeakDutch = { text -> speakDutch(text) },
+                    ttsReady = ttsReady
+                )
+            }
+        }
+    }
+
+    @Composable
+    fun RecorderScreen(onNavigateToPhrases: () -> Unit) {
         var isRecordingState by remember { mutableStateOf(false) }
         var transcribedText by remember { mutableStateOf("") }
         var translatedText by remember { mutableStateOf("") }
@@ -119,10 +160,27 @@ class MainActivity : ComponentActivity(), TextToSpeech.OnInitListener {
             horizontalAlignment = Alignment.CenterHorizontally,
             verticalArrangement = Arrangement.spacedBy(16.dp)
         ) {
-            Text(
-                text = "🇳🇱 Dutch Learner",
-                style = MaterialTheme.typography.headlineMedium
-            )
+            // Header con botón de frases
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text(
+                    text = "🇳🇱 Dutch Learner",
+                    style = MaterialTheme.typography.headlineMedium
+                )
+
+                IconButton(
+                    onClick = onNavigateToPhrases
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.List,
+                        contentDescription = "Ver frases guardadas",
+                        tint = MaterialTheme.colorScheme.primary
+                    )
+                }
+            }
 
             if (statusMessage.isNotEmpty()) {
                 Text(
