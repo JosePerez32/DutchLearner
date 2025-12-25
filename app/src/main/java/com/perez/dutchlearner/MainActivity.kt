@@ -2,7 +2,6 @@ package com.perez.dutchlearner
 
 import android.Manifest
 import android.content.pm.PackageManager
-import android.media.MediaRecorder
 import android.os.Bundle
 import android.speech.tts.TextToSpeech
 import android.widget.Toast
@@ -17,6 +16,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.lifecycleScope
+import com.perez.dutchlearner.audio.AudioRecorderHelper
 import com.perez.dutchlearner.database.AppDatabase
 import com.perez.dutchlearner.database.PhraseEntity
 import com.perez.dutchlearner.translation.TranslationServiceProvider
@@ -28,19 +28,27 @@ import java.util.*
 
 class MainActivity : ComponentActivity(), TextToSpeech.OnInitListener {
 
-    private var mediaRecorder: MediaRecorder? = null
+    private var audioRecorderHelper: AudioRecorderHelper? = null
     private var audioFile: File? = null
     private var isRecording = false
     private var tts: TextToSpeech? = null
     private var ttsReady = false
 
+    // Vosk
+    private var voskRecognizer: com.perez.dutchlearner.speech.VoskSpeechRecognizer? = null
+    private var voskInitialized = false
 
     // Servicios
     private val translationService by lazy {
         TranslationServiceProvider.getInstance(this)
     }
     private val database by lazy {
-        AppDatabase.getDatabase(this)
+        try {
+            AppDatabase.getDatabase(this)
+        } catch (e: Exception) {
+            e.printStackTrace()
+            null
+        }
     }
 
     private val recordPermissionLauncher = registerForActivityResult(
@@ -54,21 +62,44 @@ class MainActivity : ComponentActivity(), TextToSpeech.OnInitListener {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
 
-        // Inicializar TTS
-        tts = TextToSpeech(this, this)
+        android.util.Log.d("DutchLearner", "MainActivity onCreate started")
 
-        // Solicitar permisos
-        checkPermissions()
+        try {
+            // Inicializar TTS
+            tts = TextToSpeech(this, this)
+            android.util.Log.d("DutchLearner", "TTS initialized")
 
-        setContent {
-            MaterialTheme {
-                Surface(
-                    modifier = Modifier.fillMaxSize(),
-                    color = MaterialTheme.colorScheme.background
-                ) {
-                    RecorderScreen()
+            // Inicializar Vosk en background
+            lifecycleScope.launch {
+                withContext(Dispatchers.IO) {
+                    try {
+                        voskRecognizer = com.perez.dutchlearner.speech.VoskSpeechRecognizer(this@MainActivity)
+                        voskInitialized = voskRecognizer?.initModel() ?: false
+                        android.util.Log.d("DutchLearner", "Vosk initialized: $voskInitialized")
+                    } catch (e: Exception) {
+                        android.util.Log.e("DutchLearner", "Vosk init failed", e)
+                    }
                 }
             }
+
+            // Solicitar permisos
+            checkPermissions()
+            android.util.Log.d("DutchLearner", "Permissions checked")
+
+            setContent {
+                MaterialTheme {
+                    Surface(
+                        modifier = Modifier.fillMaxSize(),
+                        color = MaterialTheme.colorScheme.background
+                    ) {
+                        RecorderScreen()
+                    }
+                }
+            }
+            android.util.Log.d("DutchLearner", "UI set successfully")
+        } catch (e: Exception) {
+            android.util.Log.e("DutchLearner", "Error in onCreate", e)
+            Toast.makeText(this, "Error: ${e.message}", Toast.LENGTH_LONG).show()
         }
     }
 
@@ -124,8 +155,8 @@ class MainActivity : ComponentActivity(), TextToSpeech.OnInitListener {
                                 statusMessage = "📝 Transcribiendo..."
                                 val spanish = transcribeAudio()
 
-                                if (spanish.isEmpty()) {
-                                    errorMessage = "No se pudo transcribir el audio"
+                                if (spanish.isEmpty() || spanish.startsWith("Error")) {
+                                    errorMessage = spanish.ifEmpty { "No se pudo transcribir el audio" }
                                     isProcessing = false
                                     statusMessage = ""
                                     return@launch
@@ -271,38 +302,41 @@ class MainActivity : ComponentActivity(), TextToSpeech.OnInitListener {
     }
 
     private fun startRecording() {
-        try {
-            audioFile = File(cacheDir, "recording_${System.currentTimeMillis()}.3gp")
+        lifecycleScope.launch {
+            try {
+                audioFile = File(cacheDir, "recording_${System.currentTimeMillis()}.wav")
+                audioRecorderHelper = AudioRecorderHelper()
 
-            // Usar MediaRecorder moderno (API 31+) o legacy
-            mediaRecorder = if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.S) {
-                MediaRecorder(this)
-            } else {
-                @Suppress("DEPRECATION")
-                MediaRecorder()
-            }.apply {
-                setAudioSource(MediaRecorder.AudioSource.MIC)
-                setOutputFormat(MediaRecorder.OutputFormat.THREE_GPP)
-                setAudioEncoder(MediaRecorder.AudioEncoder.AMR_NB)
-                setOutputFile(audioFile?.absolutePath)
-                prepare()
-                start()
+                val success = audioRecorderHelper?.startRecording(audioFile!!) ?: false
+
+                if (success) {
+                    isRecording = true
+                } else {
+                    withContext(Dispatchers.Main) {
+                        Toast.makeText(
+                            this@MainActivity,
+                            "Error al iniciar grabación",
+                            Toast.LENGTH_SHORT
+                        ).show()
+                    }
+                }
+            } catch (e: Exception) {
+                e.printStackTrace()
+                withContext(Dispatchers.Main) {
+                    Toast.makeText(
+                        this@MainActivity,
+                        "Error: ${e.message}",
+                        Toast.LENGTH_SHORT
+                    ).show()
+                }
             }
-
-            isRecording = true
-        } catch (e: Exception) {
-            e.printStackTrace()
-            Toast.makeText(this, "Error al grabar: ${e.message}", Toast.LENGTH_SHORT).show()
         }
     }
 
     private fun stopRecording() {
         try {
-            mediaRecorder?.apply {
-                stop()
-                release()
-            }
-            mediaRecorder = null
+            audioRecorderHelper?.stopRecording()
+            audioRecorderHelper = null
             isRecording = false
         } catch (e: Exception) {
             e.printStackTrace()
@@ -310,22 +344,43 @@ class MainActivity : ComponentActivity(), TextToSpeech.OnInitListener {
     }
 
     private suspend fun transcribeAudio(): String = withContext(Dispatchers.IO) {
-        // PLACEHOLDER: Integración con Vosk
-        // Por ahora, simulamos transcripción para testing
-        // Aquí integrarás VoskSpeechRecognizer cuando descargues el modelo
-
-        return@withContext "Hola, quiero aprender holandés" // Texto de prueba
+        return@withContext try {
+            if (!voskInitialized || voskRecognizer == null) {
+                android.util.Log.w("DutchLearner", "Vosk not initialized, using placeholder")
+                "Hola, quiero aprender holandés" // Fallback
+            } else {
+                audioFile?.let { file ->
+                    val transcription = voskRecognizer?.transcribeAudio(file)
+                    if (transcription.isNullOrEmpty()) {
+                        android.util.Log.w("DutchLearner", "Vosk returned empty, using placeholder")
+                        "Hola, quiero aprender holandés"
+                    } else {
+                        android.util.Log.d("DutchLearner", "Transcribed: $transcription")
+                        transcription
+                    }
+                } ?: "Error: no audio file"
+            }
+        } catch (e: Exception) {
+            android.util.Log.e("DutchLearner", "Transcription error", e)
+            "Error al transcribir audio"
+        }
     }
 
     private suspend fun savePhraseToDatabase(spanish: String, dutch: String) {
         withContext(Dispatchers.IO) {
-            val phrase = PhraseEntity(
-                spanishText = spanish,
-                dutchText = dutch,
-                unknownWordsCount = 0, // TODO: calcular palabras desconocidas
-                unknownWords = ""
-            )
-            database.phraseDao().insertPhrase(phrase)
+            try {
+                database?.let { db ->
+                    val phrase = PhraseEntity(
+                        spanishText = spanish,
+                        dutchText = dutch,
+                        unknownWordsCount = 0, // TODO: calcular palabras desconocidas
+                        unknownWords = ""
+                    )
+                    db.phraseDao().insertPhrase(phrase)
+                }
+            } catch (e: Exception) {
+                e.printStackTrace()
+            }
         }
     }
 
@@ -360,6 +415,7 @@ class MainActivity : ComponentActivity(), TextToSpeech.OnInitListener {
     override fun onDestroy() {
         tts?.stop()
         tts?.shutdown()
+        voskRecognizer?.release()
         super.onDestroy()
     }
 }

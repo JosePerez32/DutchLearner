@@ -39,21 +39,8 @@ interface DeepLApi {
 // Servicio de traducción con cache local
 class DeepLTranslationService(private val context: Context) {
 
-    // IMPORTANTE: Reemplaza esto con tu API key de DeepL
-    // Para producción, guarda esto en local.properties o BuildConfig
-    private val apiKey: String by lazy {
-        // Leer desde archivo de properties
-        val properties = Properties()
-        val secretsFile = File(context.filesDir.parent, "../secrets.properties")
-
-        if (secretsFile.exists()) {
-            properties.load(FileInputStream(secretsFile))
-            properties.getProperty("DEEPL_API_KEY", "")
-        } else {
-            // Fallback si el archivo no existe
-            ""
-        }
-    }
+    // Leer API key desde BuildConfig (generado en compilación)
+    private val apiKey = com.perez.dutchlearner.BuildConfig.DEEPL_API_KEY
 
     private val api: DeepLApi by lazy {
         val logging = HttpLoggingInterceptor().apply {

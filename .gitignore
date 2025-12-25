@@ -136,7 +136,7 @@ Desktop.ini
 # IMPORTANTE: API KEYS Y DATOS SENSIBLES
 # ======================================
 # Si guardas tu API key de DeepL en un archivo separado, añádelo aquí
-# secrets.properties
+secrets.properties
 # apikeys.properties
 
 # ======================================
