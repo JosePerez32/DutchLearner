@@ -2,6 +2,7 @@ package com.perez.dutchlearner
 
 import android.Manifest
 import android.content.pm.PackageManager
+import android.os.Build
 import android.os.Bundle
 import android.speech.tts.TextToSpeech
 import android.widget.Toast
@@ -10,7 +11,9 @@ import androidx.activity.compose.setContent
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.*
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Star
 import androidx.compose.material.icons.filled.List
+import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -26,6 +29,10 @@ import com.perez.dutchlearner.database.AppDatabase
 import com.perez.dutchlearner.database.PhraseEntity
 import com.perez.dutchlearner.translation.TranslationServiceProvider
 import com.perez.dutchlearner.ui.PhrasesScreen
+import com.perez.dutchlearner.language.DutchTokenizer
+import com.perez.dutchlearner.notifications.NotificationScheduler
+import com.perez.dutchlearner.ui.VocabularyScreen
+import com.perez.dutchlearner.ui.SettingsScreen
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.firstOrNull
 import kotlinx.coroutines.launch
@@ -44,6 +51,9 @@ class MainActivity : ComponentActivity(), TextToSpeech.OnInitListener {
     // Vosk
     private var voskRecognizer: com.perez.dutchlearner.speech.VoskSpeechRecognizer? = null
     private var voskInitialized = false
+
+    // Tokenizador
+    private val tokenizer = DutchTokenizer()
 
     // Servicios
     private val translationService by lazy {
@@ -116,9 +126,9 @@ class MainActivity : ComponentActivity(), TextToSpeech.OnInitListener {
                     color = MaterialTheme.colorScheme.background
                 ) {
                     RecorderScreen(
-                        onNavigateToPhrases = {
-                            navController.navigate("phrases")
-                        }
+                        onNavigateToPhrases = { navController.navigate("phrases") },
+                        onNavigateToVocabulary = { navController.navigate("vocabulary") },
+                        onNavigateToSettings = { navController.navigate("settings") }
                     )
                 }
             }
@@ -141,11 +151,68 @@ class MainActivity : ComponentActivity(), TextToSpeech.OnInitListener {
                     ttsReady = ttsReady
                 )
             }
+
+            composable("vocabulary") {
+                val knownWords by database?.knownWordDao()?.getAllKnownWords()?.collectAsState(initial = emptyList())
+                    ?: remember { mutableStateOf(emptyList()) }
+
+                VocabularyScreen(
+                    knownWords = knownWords,
+                    onNavigateBack = { navController.popBackStack() },
+                    onAddWord = { word ->
+                        lifecycleScope.launch {
+                            withContext(Dispatchers.IO) {
+                                database?.knownWordDao()?.insertWord(
+                                    com.perez.dutchlearner.database.KnownWordEntity(word = word)
+                                )
+                            }
+                            Toast.makeText(
+                                this@MainActivity,
+                                "✅ Palabra agregada",
+                                Toast.LENGTH_SHORT
+                            ).show()
+                        }
+                    },
+                    onDeleteWord = { word ->
+                        lifecycleScope.launch {
+                            withContext(Dispatchers.IO) {
+                                database?.knownWordDao()?.deleteWord(word)
+                            }
+                        }
+                    }
+                )
+            }
+            composable("settings") {
+                SettingsScreen(
+                    onNavigateBack = { navController.popBackStack() },
+                    onScheduleNotification = { hour, minute ->
+                        val scheduler = NotificationScheduler(this@MainActivity)
+                        scheduler.scheduleDailyNotification(hour, minute)
+                        Toast.makeText(
+                            this@MainActivity,
+                            "✅ Notificación programada para las $hour:$minute",
+                            Toast.LENGTH_SHORT
+                        ).show()
+                    },
+                    onCancelNotifications = {
+                        NotificationScheduler(this@MainActivity).cancelDailyNotifications()
+                        Toast.makeText(
+                            this@MainActivity,
+                            "⏸️ Notificaciones desactivadas",
+                            Toast.LENGTH_SHORT
+                        ).show()
+                    }
+                )
+            }
         }
     }
 
     @Composable
-    fun RecorderScreen(onNavigateToPhrases: () -> Unit) {
+    fun RecorderScreen(
+        onNavigateToPhrases: () -> Unit,
+        onNavigateToVocabulary: () -> Unit,
+        onNavigateToSettings: () -> Unit
+    ) {
         var isRecordingState by remember { mutableStateOf(false) }
         var transcribedText by remember { mutableStateOf("") }
         var translatedText by remember { mutableStateOf("") }
@@ -160,7 +227,7 @@ class MainActivity : ComponentActivity(), TextToSpeech.OnInitListener {
             horizontalAlignment = Alignment.CenterHorizontally,
             verticalArrangement = Arrangement.spacedBy(16.dp)
         ) {
-            // Header con botón de frases
+            // Header con botones de navegación
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.SpaceBetween,
@@ -171,15 +238,33 @@ class MainActivity : ComponentActivity(), TextToSpeech.OnInitListener {
                     style = MaterialTheme.typography.headlineMedium
                 )
 
-                IconButton(
-                    onClick = onNavigateToPhrases
-                ) {
-                    Icon(
-                        imageVector = Icons.Default.List,
-                        contentDescription = "Ver frases guardadas",
-                        tint = MaterialTheme.colorScheme.primary
-                    )
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    IconButton(onClick = onNavigateToVocabulary) {
+                        Icon(
+                            imageVector = Icons.Default.Star,
+                            contentDescription = "Mi vocabulario",
+                            tint = MaterialTheme.colorScheme.primary
+                        )
+                    }
+
+                    IconButton(onClick = onNavigateToPhrases) {
+                        Icon(
+                            imageVector = Icons.Default.List,
+                            contentDescription = "Ver frases guardadas",
+                            tint = MaterialTheme.colorScheme.primary
+                        )
+                    }
+                    IconButton(onClick = onNavigateToSettings) {
+                        Icon(
+                            imageVector = Icons.Default.Settings,
+                            contentDescription = "Configuración",
+                            tint = MaterialTheme.colorScheme.primary
+                        )
+                    }
+                    // Agregar este IconButton
+
                 }
+
             }
 
             if (statusMessage.isNotEmpty()) {
@@ -428,13 +513,29 @@ class MainActivity : ComponentActivity(), TextToSpeech.OnInitListener {
         withContext(Dispatchers.IO) {
             try {
                 database?.let { db ->
+                    // Obtener palabras conocidas
+                    val knownWords = db.knownWordDao().getAllKnownWords().firstOrNull() ?: emptyList()
+
+                    // Analizar texto holandés
+                    val analysis = tokenizer.analyzeText(dutch, knownWords)
+
+                    // Crear entidad de frase
                     val phrase = PhraseEntity(
                         spanishText = spanish,
                         dutchText = dutch,
-                        unknownWordsCount = 0, // TODO: calcular palabras desconocidas
-                        unknownWords = ""
+                        unknownWordsCount = analysis.unknownCount,
+                        unknownWords = analysis.unknownWords.joinToString(",")
                     )
+
+                    // Guardar frase
                     db.phraseDao().insertPhrase(phrase)
+
+                    // Incrementar contador de palabras conocidas vistas
+                    analysis.knownWords.forEach { word ->
+                        db.knownWordDao().incrementWordSeen(word)
+                    }
+
+                    android.util.Log.d("DutchLearner", "Phrase saved: ${analysis.unknownCount} unknown words")
                 }
             } catch (e: Exception) {
                 e.printStackTrace()
@@ -475,5 +576,30 @@ class MainActivity : ComponentActivity(), TextToSpeech.OnInitListener {
         tts?.shutdown()
         voskRecognizer?.release()
         super.onDestroy()
+    }
+    private val notificationPermissionLauncher = registerForActivityResult(
+        ActivityResultContracts.RequestPermission()
+    ) { isGranted ->
+        if (isGranted) {
+            Toast.makeText(this, "Notificaciones activadas", Toast.LENGTH_SHORT).show()
+        } else {
+            Toast.makeText(
+                this,
+                "No podrás recibir recordatorios",
+                Toast.LENGTH_LONG
+            ).show()
+        }
+    }
+
+    private fun checkNotificationPermission() {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            if (ContextCompat.checkSelfPermission(
+                    this,
+                    Manifest.permission.POST_NOTIFICATIONS
+                ) != PackageManager.PERMISSION_GRANTED
+            ) {
+                notificationPermissionLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
+            }
+        }
     }
 }

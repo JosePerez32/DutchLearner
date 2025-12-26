@@ -120,8 +120,8 @@ interface KnownWordDao {
     @Query("SELECT * FROM known_words WHERE word = :word")
     suspend fun isWordKnown(word: String): KnownWordEntity?
 
-    @Query("SELECT * FROM known_words")
-    suspend fun getAllKnownWords(): List<KnownWordEntity>
+    @Query("SELECT * FROM known_words ORDER BY word ASC")
+    fun getAllKnownWords(): Flow<List<KnownWordEntity>>
 
     @Query("SELECT COUNT(*) FROM known_words")
     suspend fun getKnownWordsCount(): Int
