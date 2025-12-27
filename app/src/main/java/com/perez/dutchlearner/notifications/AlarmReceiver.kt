@@ -56,11 +56,18 @@ class AlarmReceiver : BroadcastReceiver() {
 
                 // Obtener todas las frases sincrónicamente
                 val phrases = dao.getAllPhrasesSync()
+                Log.d("DutchLearner", "Tipo de phrases: ${phrases::class.java.simpleName}")
 
-                if (phrases.isNotEmpty()) {
-                    // Buscar la frase con más palabras desconocidas
-                    phrases.maxByOrNull { it.unknownWordsCount } ?: phrases.firstOrNull()
+                // Si es una lista, puedes usar:
+                if (phrases is List<*>) {
+                    val phraseList = phrases as List<com.perez.dutchlearner.database.PhraseEntity>
+                    if (phraseList.isNotEmpty()) {
+                        phraseList.maxByOrNull { it.unknownWordsCount } ?: phraseList.firstOrNull()
+                    } else {
+                        null
+                    }
                 } else {
+                    // Si no es una lista, retorna null
                     null
                 }
             } catch (e: Exception) {

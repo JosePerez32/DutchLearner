@@ -7,6 +7,7 @@ import android.graphics.BitmapFactory
 import android.os.Build
 import androidx.core.app.NotificationCompat
 import androidx.core.app.NotificationManagerCompat
+import com.perez.dutchlearner.MainActivity
 import com.perez.dutchlearner.R
 import com.perez.dutchlearner.database.PhraseEntity
 import kotlinx.coroutines.CoroutineScope

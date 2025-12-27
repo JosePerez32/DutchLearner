@@ -19,7 +19,7 @@ data class PhraseEntity(
     val unknownWordsCount: Int = 0,
 
     @ColumnInfo(name = "unknown_words")
-    val unknownWords: String = "", // JSON o separado por comas
+    val unknownWords: String = "", // Separado por comas
 
     @ColumnInfo(name = "created_at")
     val createdAt: Long = System.currentTimeMillis(),
@@ -66,17 +66,20 @@ interface PhraseDao {
         WHERE id = :id
     """)
     suspend fun markAsReviewed(id: Long, timestamp: Long = System.currentTimeMillis())
+
+    @Query("SELECT * FROM phrases ORDER BY created_at DESC")
+    fun getAllPhrasesSync(): List<PhraseEntity>
 }
 
 // Base de datos
 @Database(
-    entities = [PhraseEntity::class, KnownWordEntity::class],
-    version = 1,
+    entities = [PhraseEntity::class, UnknownWordEntity::class],
+    version = 2, // ← Incrementar versión
     exportSchema = false
 )
 abstract class AppDatabase : RoomDatabase() {
     abstract fun phraseDao(): PhraseDao
-    abstract fun knownWordDao(): KnownWordDao
+    abstract fun unknownWordDao(): UnknownWordDao
 
     companion object {
         @Volatile
@@ -89,7 +92,7 @@ abstract class AppDatabase : RoomDatabase() {
                     AppDatabase::class.java,
                     "dutch_learner_database"
                 )
-                    .fallbackToDestructiveMigration()
+                    .fallbackToDestructiveMigration() // ← Importante para cambio de schema
                     .build()
                 INSTANCE = instance
                 instance
@@ -98,9 +101,9 @@ abstract class AppDatabase : RoomDatabase() {
     }
 }
 
-// Entidad para palabras conocidas
-@Entity(tableName = "known_words")
-data class KnownWordEntity(
+// Entidad para palabras DESCONOCIDAS (cambio principal)
+@Entity(tableName = "unknown_words")
+data class UnknownWordEntity(
     @PrimaryKey
     val word: String,
 
@@ -108,27 +111,48 @@ data class KnownWordEntity(
     val addedAt: Long = System.currentTimeMillis(),
 
     @ColumnInfo(name = "times_seen")
-    val timesSeen: Int = 1
+    val timesSeen: Int = 1,
+
+    @ColumnInfo(name = "learned")
+    val learned: Boolean = false, // ← NUEVO: marcar cuando se aprende
+
+    @ColumnInfo(name = "difficulty")
+    val difficulty: Int = 0 // ← NUEVO: 0=fácil, 1=media, 2=difícil
 )
 
 @Dao
-interface KnownWordDao {
+interface UnknownWordDao {
 
     @Insert(onConflict = OnConflictStrategy.REPLACE)
-    suspend fun insertWord(word: KnownWordEntity)
+    suspend fun insertWord(word: UnknownWordEntity)
 
-    @Query("SELECT * FROM known_words WHERE word = :word")
-    suspend fun isWordKnown(word: String): KnownWordEntity?
+    @Query("SELECT * FROM unknown_words WHERE word = :word")
+    suspend fun getWord(word: String): UnknownWordEntity?
 
-    @Query("SELECT * FROM known_words ORDER BY word ASC")
-    fun getAllKnownWords(): Flow<List<KnownWordEntity>>
+    @Query("SELECT * FROM unknown_words WHERE learned = 0 ORDER BY times_seen DESC, word ASC")
+    fun getAllUnknownWords(): Flow<List<UnknownWordEntity>>
 
-    @Query("SELECT COUNT(*) FROM known_words")
-    suspend fun getKnownWordsCount(): Int
+    @Query("SELECT * FROM unknown_words WHERE learned = 1 ORDER BY word ASC")
+    fun getAllLearnedWords(): Flow<List<UnknownWordEntity>>
 
-    @Query("UPDATE known_words SET times_seen = times_seen + 1 WHERE word = :word")
+    @Query("SELECT COUNT(*) FROM unknown_words WHERE learned = 0")
+    suspend fun getUnknownWordsCount(): Int
+
+    @Query("SELECT COUNT(*) FROM unknown_words WHERE learned = 1")
+    suspend fun getLearnedWordsCount(): Int
+
+    @Query("UPDATE unknown_words SET times_seen = times_seen + 1 WHERE word = :word")
     suspend fun incrementWordSeen(word: String)
 
+    @Query("UPDATE unknown_words SET learned = 1 WHERE word = :word")
+    suspend fun markAsLearned(word: String)
+
+    @Query("UPDATE unknown_words SET learned = 0 WHERE word = :word")
+    suspend fun markAsUnknown(word: String)
+
     @Delete
-    suspend fun deleteWord(word: KnownWordEntity)
+    suspend fun deleteWord(word: UnknownWordEntity)
+
+    @Query("DELETE FROM unknown_words WHERE learned = 1")
+    suspend fun deleteAllLearned()
 }

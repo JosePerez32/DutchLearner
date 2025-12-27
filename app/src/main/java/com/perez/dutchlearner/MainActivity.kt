@@ -2,7 +2,6 @@ package com.perez.dutchlearner
 
 import android.Manifest
 import android.content.pm.PackageManager
-import android.os.Build
 import android.os.Bundle
 import android.speech.tts.TextToSpeech
 import android.widget.Toast
@@ -11,7 +10,7 @@ import androidx.activity.compose.setContent
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.*
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Star
+import androidx.compose.material.icons.filled.Favorite
 import androidx.compose.material.icons.filled.List
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material3.*
@@ -27,12 +26,11 @@ import androidx.navigation.compose.rememberNavController
 import com.perez.dutchlearner.audio.AudioRecorderHelper
 import com.perez.dutchlearner.database.AppDatabase
 import com.perez.dutchlearner.database.PhraseEntity
-import com.perez.dutchlearner.translation.TranslationServiceProvider
-import com.perez.dutchlearner.ui.PhrasesScreen
 import com.perez.dutchlearner.language.DutchTokenizer
 import com.perez.dutchlearner.notifications.NotificationScheduler
-import com.perez.dutchlearner.ui.VocabularyScreen
-import com.perez.dutchlearner.ui.SettingsScreen
+import com.perez.dutchlearner.translation.TranslationServiceProvider
+import com.perez.dutchlearner.ui.PhrasesScreen
+import com.perez.dutchlearner.ui.UnknownWordsScreen
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.firstOrNull
 import kotlinx.coroutines.launch
@@ -153,22 +151,34 @@ class MainActivity : ComponentActivity(), TextToSpeech.OnInitListener {
             }
 
             composable("vocabulary") {
-                val knownWords by database?.knownWordDao()?.getAllKnownWords()?.collectAsState(initial = emptyList())
+                val unknownWords by database?.unknownWordDao()?.getAllUnknownWords()?.collectAsState(initial = emptyList())
                     ?: remember { mutableStateOf(emptyList()) }
 
-                VocabularyScreen(
-                    knownWords = knownWords,
+                UnknownWordsScreen(
+                    unknownWords = unknownWords,
                     onNavigateBack = { navController.popBackStack() },
                     onAddWord = { word ->
                         lifecycleScope.launch {
                             withContext(Dispatchers.IO) {
-                                database?.knownWordDao()?.insertWord(
-                                    com.perez.dutchlearner.database.KnownWordEntity(word = word)
+                                database?.unknownWordDao()?.insertWord(
+                                    com.perez.dutchlearner.database.UnknownWordEntity(word = word)
                                 )
                             }
                             Toast.makeText(
                                 this@MainActivity,
-                                "✅ Palabra agregada",
+                                "✅ Palabra agregada a desconocidas",
+                                Toast.LENGTH_SHORT
+                            ).show()
+                        }
+                    },
+                    onMarkAsLearned = { word ->
+                        lifecycleScope.launch {
+                            withContext(Dispatchers.IO) {
+                                database?.unknownWordDao()?.markAsLearned(word.word)
+                            }
+                            Toast.makeText(
+                                this@MainActivity,
+                                "🎉 ¡Palabra aprendida!",
                                 Toast.LENGTH_SHORT
                             ).show()
                         }
@@ -176,14 +186,15 @@ class MainActivity : ComponentActivity(), TextToSpeech.OnInitListener {
                     onDeleteWord = { word ->
                         lifecycleScope.launch {
                             withContext(Dispatchers.IO) {
-                                database?.knownWordDao()?.deleteWord(word)
+                                database?.unknownWordDao()?.deleteWord(word)
                             }
                         }
                     }
                 )
             }
+
             composable("settings") {
-                SettingsScreen(
+                com.perez.dutchlearner.ui.SettingsScreen(
                     onNavigateBack = { navController.popBackStack() },
                     onScheduleNotification = { hour, minute ->
                         val scheduler = NotificationScheduler(this@MainActivity)
@@ -241,8 +252,8 @@ class MainActivity : ComponentActivity(), TextToSpeech.OnInitListener {
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     IconButton(onClick = onNavigateToVocabulary) {
                         Icon(
-                            imageVector = Icons.Default.Star,
-                            contentDescription = "Mi vocabulario",
+                            imageVector = Icons.Default.Favorite,
+                            contentDescription = "Palabras desconocidas",
                             tint = MaterialTheme.colorScheme.primary
                         )
                     }
@@ -254,6 +265,7 @@ class MainActivity : ComponentActivity(), TextToSpeech.OnInitListener {
                             tint = MaterialTheme.colorScheme.primary
                         )
                     }
+
                     IconButton(onClick = onNavigateToSettings) {
                         Icon(
                             imageVector = Icons.Default.Settings,
@@ -261,10 +273,7 @@ class MainActivity : ComponentActivity(), TextToSpeech.OnInitListener {
                             tint = MaterialTheme.colorScheme.primary
                         )
                     }
-                    // Agregar este IconButton
-
                 }
-
             }
 
             if (statusMessage.isNotEmpty()) {
@@ -489,14 +498,14 @@ class MainActivity : ComponentActivity(), TextToSpeech.OnInitListener {
     private suspend fun transcribeAudio(): String = withContext(Dispatchers.IO) {
         return@withContext try {
             if (!voskInitialized || voskRecognizer == null) {
-                android.util.Log.w("DutchLearner", "Vosk not initialized, using placeholder")
-                "Hola, quiero aprender holandés" // Fallback
+                android.util.Log.w("DutchLearner", "Vosk not initialized")
+                "" // Devolver vacío en vez de placeholder
             } else {
                 audioFile?.let { file ->
                     val transcription = voskRecognizer?.transcribeAudio(file)
                     if (transcription.isNullOrEmpty()) {
-                        android.util.Log.w("DutchLearner", "Vosk returned empty, using placeholder")
-                        "Hola, quiero aprender holandés"
+                        android.util.Log.w("DutchLearner", "Vosk returned empty")
+                        ""
                     } else {
                         android.util.Log.d("DutchLearner", "Transcribed: $transcription")
                         transcription
@@ -513,11 +522,11 @@ class MainActivity : ComponentActivity(), TextToSpeech.OnInitListener {
         withContext(Dispatchers.IO) {
             try {
                 database?.let { db ->
-                    // Obtener palabras conocidas
-                    val knownWords = db.knownWordDao().getAllKnownWords().firstOrNull() ?: emptyList()
+                    // Obtener palabras DESCONOCIDAS
+                    val unknownWords = db.unknownWordDao().getAllUnknownWords().firstOrNull() ?: emptyList()
 
-                    // Analizar texto holandés
-                    val analysis = tokenizer.analyzeText(dutch, knownWords)
+                    // Analizar texto holandés (lógica invertida)
+                    val analysis = tokenizer.analyzeText(dutch, unknownWords)
 
                     // Crear entidad de frase
                     val phrase = PhraseEntity(
@@ -530,12 +539,13 @@ class MainActivity : ComponentActivity(), TextToSpeech.OnInitListener {
                     // Guardar frase
                     db.phraseDao().insertPhrase(phrase)
 
-                    // Incrementar contador de palabras conocidas vistas
-                    analysis.knownWords.forEach { word ->
-                        db.knownWordDao().incrementWordSeen(word)
+                    // Incrementar contador de palabras desconocidas vistas
+                    analysis.unknownWords.forEach { word ->
+                        db.unknownWordDao().incrementWordSeen(word)
                     }
 
-                    android.util.Log.d("DutchLearner", "Phrase saved: ${analysis.unknownCount} unknown words")
+                    android.util.Log.d("DutchLearner",
+                        "Phrase saved: ${analysis.unknownCount} unknown words, ${analysis.knownCount} known")
                 }
             } catch (e: Exception) {
                 e.printStackTrace()
@@ -576,30 +586,5 @@ class MainActivity : ComponentActivity(), TextToSpeech.OnInitListener {
         tts?.shutdown()
         voskRecognizer?.release()
         super.onDestroy()
-    }
-    private val notificationPermissionLauncher = registerForActivityResult(
-        ActivityResultContracts.RequestPermission()
-    ) { isGranted ->
-        if (isGranted) {
-            Toast.makeText(this, "Notificaciones activadas", Toast.LENGTH_SHORT).show()
-        } else {
-            Toast.makeText(
-                this,
-                "No podrás recibir recordatorios",
-                Toast.LENGTH_LONG
-            ).show()
-        }
-    }
-
-    private fun checkNotificationPermission() {
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-            if (ContextCompat.checkSelfPermission(
-                    this,
-                    Manifest.permission.POST_NOTIFICATIONS
-                ) != PackageManager.PERMISSION_GRANTED
-            ) {
-                notificationPermissionLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
-            }
-        }
     }
 }
