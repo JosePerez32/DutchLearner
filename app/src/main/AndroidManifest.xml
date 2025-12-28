@@ -59,7 +59,17 @@
                 <action android:name="com.perez.dutchlearner.NOTIFICATION_ALARM" />
             </intent-filter>
         </receiver>
-
+        <!-- Widget de grabación rápida -->
+        <receiver
+            android:name=".widget.RecordWidget"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
+            </intent-filter>
+            <meta-data
+                android:name="android.appwidget.provider"
+                android:resource="@xml/widget_record_info" />
+        </receiver>
     </application>
 
 </manifest>

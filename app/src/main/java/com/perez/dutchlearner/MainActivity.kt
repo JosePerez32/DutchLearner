@@ -106,6 +106,32 @@ class MainActivity : ComponentActivity(), TextToSpeech.OnInitListener {
                     AppNavigation()
                 }
             }
+            // Manejar grabación rápida desde widget
+            if (intent?.action == "com.perez.dutchlearner.ACTION_QUICK_RECORD") {
+                // Esperar a que la UI esté lista
+                lifecycleScope.launch {
+                    kotlinx.coroutines.delay(500)
+                    // Auto-iniciar grabación
+                    startRecording()
+                    Toast.makeText(
+                        this@MainActivity,
+                        "🎤 Grabación iniciada desde widget",
+                        Toast.LENGTH_SHORT
+                    ).show()
+                }
+            }
+            intent?.extras?.let { extras ->
+                if (extras.getString("action") == "speak") {
+                    val textToSpeak = extras.getString("text_to_speak")
+                    textToSpeak?.let { text ->
+                        // Esperar a que TTS se inicialice
+                        lifecycleScope.launch {
+                            kotlinx.coroutines.delay(1000) // Esperar 1 segundo
+                            speakDutch(text)
+                        }
+                    }
+                }
+            }
             android.util.Log.d("DutchLearner", "UI set successfully")
         } catch (e: Exception) {
             android.util.Log.e("DutchLearner", "Error in onCreate", e)
@@ -132,7 +158,8 @@ class MainActivity : ComponentActivity(), TextToSpeech.OnInitListener {
             }
 
             composable("phrases") {
-                val phrases by database?.phraseDao()?.getAllPhrasesByDate()?.collectAsState(initial = emptyList())
+                val phrases by database?.phraseDao()?.getAllPhrasesByDate()
+                    ?.collectAsState(initial = emptyList())
                     ?: remember { mutableStateOf(emptyList()) }
 
                 PhrasesScreen(
@@ -151,7 +178,8 @@ class MainActivity : ComponentActivity(), TextToSpeech.OnInitListener {
             }
 
             composable("vocabulary") {
-                val unknownWords by database?.unknownWordDao()?.getAllUnknownWords()?.collectAsState(initial = emptyList())
+                val unknownWords by database?.unknownWordDao()?.getAllUnknownWords()
+                    ?.collectAsState(initial = emptyList())
                     ?: remember { mutableStateOf(emptyList()) }
 
                 UnknownWordsScreen(
@@ -196,22 +224,76 @@ class MainActivity : ComponentActivity(), TextToSpeech.OnInitListener {
             composable("settings") {
                 com.perez.dutchlearner.ui.SettingsScreen(
                     onNavigateBack = { navController.popBackStack() },
-                    onScheduleNotification = { hour, minute ->
-                        val scheduler = NotificationScheduler(this@MainActivity)
-                        scheduler.scheduleDailyNotification(hour, minute)
-                        Toast.makeText(
-                            this@MainActivity,
-                            "✅ Notificación programada para las $hour:$minute",
-                            Toast.LENGTH_SHORT
-                        ).show()
+                    onNavigateToAlarms = { navController.navigate("alarms") }
+                )
+            }
+
+            composable("alarms") {
+                val alarms by database?.alarmDao()?.getAllAlarms()
+                    ?.collectAsState(initial = emptyList())
+                    ?: remember { mutableStateOf(emptyList()) }
+
+                com.perez.dutchlearner.ui.AlarmsScreen(
+                    alarms = alarms,
+                    onNavigateBack = { navController.popBackStack() },
+                    onAddAlarm = { hour, minute ->
+                        lifecycleScope.launch {
+                            withContext(Dispatchers.IO) {
+                                val alarm = com.perez.dutchlearner.database.AlarmEntity(
+                                    hour = hour,
+                                    minute = minute
+                                )
+                                val id = database?.alarmDao()?.insertAlarm(alarm)
+
+                                // Programar la alarma
+                                id?.let {
+                                    val newAlarm = database?.alarmDao()?.getAlarmById(it)
+                                    newAlarm?.let { a ->
+                                        com.perez.dutchlearner.notifications.MultiAlarmScheduler(
+                                            this@MainActivity
+                                        )
+                                            .scheduleAlarm(a)
+                                    }
+                                }
+                            }
+                            Toast.makeText(
+                                this@MainActivity,
+                                "✅ Alarma agregada",
+                                Toast.LENGTH_SHORT
+                            ).show()
+                        }
                     },
-                    onCancelNotifications = {
-                        NotificationScheduler(this@MainActivity).cancelDailyNotifications()
-                        Toast.makeText(
-                            this@MainActivity,
-                            "⏸️ Notificaciones desactivadas",
-                            Toast.LENGTH_SHORT
-                        ).show()
+                    onToggleAlarm = { alarm, enabled ->
+                        lifecycleScope.launch {
+                            withContext(Dispatchers.IO) {
+                                database?.alarmDao()?.setAlarmEnabled(alarm.id, enabled)
+
+                                val scheduler =
+                                    com.perez.dutchlearner.notifications.MultiAlarmScheduler(this@MainActivity)
+                                if (enabled) {
+                                    scheduler.scheduleAlarm(alarm.copy(enabled = true))
+                                } else {
+                                    scheduler.cancelAlarm(alarm.id)
+                                }
+                            }
+                        }
+                    },
+                    onDeleteAlarm = { alarm ->
+                        lifecycleScope.launch {
+                            withContext(Dispatchers.IO) {
+                                // Cancelar alarma primero
+                                com.perez.dutchlearner.notifications.MultiAlarmScheduler(this@MainActivity)
+                                    .cancelAlarm(alarm.id)
+
+                                // Eliminar de BD
+                                database?.alarmDao()?.deleteAlarm(alarm)
+                            }
+                            Toast.makeText(
+                                this@MainActivity,
+                                "🗑️ Alarma eliminada",
+                                Toast.LENGTH_SHORT
+                            ).show()
+                        }
                     }
                 )
             }
@@ -554,12 +636,31 @@ class MainActivity : ComponentActivity(), TextToSpeech.OnInitListener {
     }
 
     override fun onInit(status: Int) {
+//        if (status == TextToSpeech.SUCCESS) {
+//            val result = tts?.setLanguage(Locale("nl", "NL"))
+//            ttsReady = result != TextToSpeech.LANG_MISSING_DATA &&
+//                    result != TextToSpeech.LANG_NOT_SUPPORTED
+//
+//            if (!ttsReady) {
+//                Toast.makeText(
+//                    this,
+//                    "Por favor instala voces en holandés:\nConfiguración > Idioma > Texto a voz",
+//                    Toast.LENGTH_LONG
+//                ).show()
+//            }
+//        }
         if (status == TextToSpeech.SUCCESS) {
             val result = tts?.setLanguage(Locale("nl", "NL"))
             ttsReady = result != TextToSpeech.LANG_MISSING_DATA &&
                     result != TextToSpeech.LANG_NOT_SUPPORTED
 
-            if (!ttsReady) {
+            if (ttsReady) {
+                // Ajustar velocidad (0.5 = lento, 1.0 = normal, 1.5 = rápido)
+                tts?.setSpeechRate(0.75f) // 25% más lento que normal
+
+                // Ajustar tono (opcional)
+                tts?.setPitch(1.0f) // 1.0 = normal
+            } else {
                 Toast.makeText(
                     this,
                     "Por favor instala voces en holandés:\nConfiguración > Idioma > Texto a voz",

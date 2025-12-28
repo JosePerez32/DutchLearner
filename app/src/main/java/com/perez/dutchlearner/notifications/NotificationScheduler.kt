@@ -6,7 +6,6 @@ import android.content.Context
 import android.content.Intent
 import android.os.Build
 import android.util.Log
-import android.provider.Settings
 import java.util.*
 
 class NotificationScheduler(private val context: Context) {
@@ -14,20 +13,11 @@ class NotificationScheduler(private val context: Context) {
     private val alarmManager = context.getSystemService(Context.ALARM_SERVICE) as AlarmManager
 
     /**
-     * Programa notificación diaria a una hora específica
-     * CORREGIDO: Usa setRepeating para evitar SecurityException
+     * Programa notificación diaria EXACTA
      */
     fun scheduleDailyNotification(hour: Int, minute: Int): Boolean {
         try {
-            // Verificar permiso en Android 12+ (opcional, solo para alarmas exactas)
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
-                if (!alarmManager.canScheduleExactAlarms()) {
-                    Log.w("DutchLearner", "No puede programar alarmas exactas, usando inexactas")
-                    // Continuar de todos modos con alarma inexacta
-                }
-            }
-
-            // Crear intent para el receiver
+            // Crear intent
             val intent = Intent(context, AlarmReceiver::class.java).apply {
                 action = "com.perez.dutchlearner.NOTIFICATION_ALARM"
             }
@@ -39,35 +29,58 @@ class NotificationScheduler(private val context: Context) {
                 PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
             )
 
-            // Calcular tiempo para la alarma
+            // Calcular tiempo
             val calendar = Calendar.getInstance().apply {
                 set(Calendar.HOUR_OF_DAY, hour)
                 set(Calendar.MINUTE, minute)
                 set(Calendar.SECOND, 0)
                 set(Calendar.MILLISECOND, 0)
 
-                // Si la hora ya pasó hoy, programar para mañana
+                // Si ya pasó, programar para mañana
                 if (timeInMillis <= System.currentTimeMillis()) {
                     add(Calendar.DAY_OF_MONTH, 1)
                 }
             }
 
-            Log.d("DutchLearner", "Programando alarma para: ${calendar.time}")
+            Log.d("DutchLearner", "Programando alarma EXACTA para: ${calendar.time}")
 
-            // CORRECCIÓN: Usar setRepeating en vez de setExactAndAllowWhileIdle
-            // Esto NO requiere permiso SCHEDULE_EXACT_ALARM
-            alarmManager.setRepeating(
-                AlarmManager.RTC_WAKEUP,
-                calendar.timeInMillis,
-                AlarmManager.INTERVAL_DAY, // 24 horas
-                pendingIntent
-            )
+            // Programar alarma EXACTA (requiere permisos en Android 12+)
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+                if (alarmManager.canScheduleExactAlarms()) {
+                    // Programar primera alarma exacta
+                    alarmManager.setExactAndAllowWhileIdle(
+                        AlarmManager.RTC_WAKEUP,
+                        calendar.timeInMillis,
+                        pendingIntent
+                    )
 
-            // Guardar configuración
-            saveScheduleConfig(hour, minute)
+                    // Guardar para reprogramar después
+                    saveScheduleConfig(hour, minute)
 
-            Log.d("DutchLearner", "Alarma programada exitosamente")
-            return true
+                    Log.d("DutchLearner", "Alarma exacta programada")
+                    return true
+                } else {
+                    Log.e("DutchLearner", "No tiene permiso para alarmas exactas")
+                    // Intentar con alarma inexacta
+                    alarmManager.setRepeating(
+                        AlarmManager.RTC_WAKEUP,
+                        calendar.timeInMillis,
+                        AlarmManager.INTERVAL_DAY,
+                        pendingIntent
+                    )
+                    saveScheduleConfig(hour, minute)
+                    return true
+                }
+            } else {
+                // Android < 12: usar setExact sin problemas
+                alarmManager.setExact(
+                    AlarmManager.RTC_WAKEUP,
+                    calendar.timeInMillis,
+                    pendingIntent
+                )
+                saveScheduleConfig(hour, minute)
+                return true
+            }
 
         } catch (e: Exception) {
             Log.e("DutchLearner", "Error programando alarma", e)
@@ -76,8 +89,15 @@ class NotificationScheduler(private val context: Context) {
     }
 
     /**
-     * Cancela todas las notificaciones programadas
+     * Reprograma la alarma para el día siguiente (llamar desde AlarmReceiver)
      */
+    fun rescheduleNextDay() {
+        val time = getScheduledTime()
+        if (time != null) {
+            scheduleDailyNotification(time.first, time.second)
+        }
+    }
+
     fun cancelDailyNotifications() {
         try {
             val intent = Intent(context, AlarmReceiver::class.java).apply {
@@ -100,17 +120,11 @@ class NotificationScheduler(private val context: Context) {
         }
     }
 
-    /**
-     * Verifica si hay notificaciones programadas
-     */
     fun hasScheduledNotifications(): Boolean {
         val prefs = context.getSharedPreferences("notifications", Context.MODE_PRIVATE)
         return prefs.contains("notification_hour")
     }
 
-    /**
-     * Obtiene la hora programada
-     */
     fun getScheduledTime(): Pair<Int, Int>? {
         val prefs = context.getSharedPreferences("notifications", Context.MODE_PRIVATE)
         return if (prefs.contains("notification_hour")) {

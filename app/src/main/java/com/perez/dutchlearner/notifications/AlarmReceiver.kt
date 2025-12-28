@@ -13,20 +13,30 @@ import kotlinx.coroutines.withContext
 class AlarmReceiver : BroadcastReceiver() {
 
     override fun onReceive(context: Context, intent: Intent) {
+//        if (intent.action == "com.perez.dutchlearner.NOTIFICATION_ALARM") {
+//            Log.d("DutchLearner", "Alarma recibida, mostrando notificación")
+//
+//            // Mostrar notificación simple sin frase específica
+//            CoroutineScope(Dispatchers.IO).launch {
+//                NotificationHelper(context).showPracticeNotification(null)
+//            }
+//        }
+//        when (intent.action) {
+//            "com.perez.dutchlearner.NOTIFICATION_ALARM" -> {
+//                showDailyNotification(context)
+//            }
+//            "ACTION_LISTEN" -> {
+//                // Opcional para futuro
+//            }
+//        }
         if (intent.action == "com.perez.dutchlearner.NOTIFICATION_ALARM") {
             Log.d("DutchLearner", "Alarma recibida, mostrando notificación")
 
-            // Mostrar notificación simple sin frase específica
             CoroutineScope(Dispatchers.IO).launch {
                 NotificationHelper(context).showPracticeNotification(null)
-            }
-        }
-        when (intent.action) {
-            "com.perez.dutchlearner.NOTIFICATION_ALARM" -> {
-                showDailyNotification(context)
-            }
-            "ACTION_LISTEN" -> {
-                // Opcional para futuro
+
+                // Reprogramar para mañana
+                NotificationScheduler(context).rescheduleNextDay()
             }
         }
     }

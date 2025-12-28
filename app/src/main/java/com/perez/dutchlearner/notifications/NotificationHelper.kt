@@ -130,13 +130,24 @@ class NotificationHelper(private val context: Context) {
         )
 
     private fun getListenPendingIntent(text: String, notificationId: Int) =
-        android.app.PendingIntent.getBroadcast(
+//        android.app.PendingIntent.getBroadcast(
+//            context,
+//            notificationId + 1, // ID diferente
+//            android.content.Intent(context, AlarmReceiver::class.java).apply {
+//                action = "ACTION_LISTEN"
+//                putExtra("text_to_speak", text)
+//                putExtra("notification_id", notificationId)
+//            },
+//            android.app.PendingIntent.FLAG_UPDATE_CURRENT or
+//                    android.app.PendingIntent.FLAG_IMMUTABLE
+        android.app.PendingIntent.getActivity(
             context,
-            notificationId + 1, // ID diferente
-            android.content.Intent(context, AlarmReceiver::class.java).apply {
-                action = "ACTION_LISTEN"
+            notificationId + 1,
+            android.content.Intent(context, MainActivity::class.java).apply {
+                flags = android.content.Intent.FLAG_ACTIVITY_NEW_TASK or
+                        android.content.Intent.FLAG_ACTIVITY_CLEAR_TASK
+                putExtra("action", "speak")
                 putExtra("text_to_speak", text)
-                putExtra("notification_id", notificationId)
             },
             android.app.PendingIntent.FLAG_UPDATE_CURRENT or
                     android.app.PendingIntent.FLAG_IMMUTABLE

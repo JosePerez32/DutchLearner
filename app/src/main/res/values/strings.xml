@@ -1,3 +1,5 @@
 <resources>
+    <string name="record_quick">Grabar rápido</string>
+    <string name="widget_description">Botón de grabación rápida</string>
     <string name="app_name">Dutch Learner</string>
 </resources>

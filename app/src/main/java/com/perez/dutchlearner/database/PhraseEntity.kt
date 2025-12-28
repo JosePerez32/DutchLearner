@@ -3,6 +3,7 @@ package com.perez.dutchlearner.database
 import androidx.room.*
 import kotlinx.coroutines.flow.Flow
 
+
 // Entidad para guardar frases
 @Entity(tableName = "phrases")
 data class PhraseEntity(
@@ -73,13 +74,14 @@ interface PhraseDao {
 
 // Base de datos
 @Database(
-    entities = [PhraseEntity::class, UnknownWordEntity::class],
-    version = 2, // ← Incrementar versión
+    entities = [PhraseEntity::class, UnknownWordEntity::class, AlarmEntity::class],
+    version = 3, // ← Incrementar versión
     exportSchema = false
 )
 abstract class AppDatabase : RoomDatabase() {
     abstract fun phraseDao(): PhraseDao
     abstract fun unknownWordDao(): UnknownWordDao
+    abstract fun alarmDao(): AlarmDao
 
     companion object {
         @Volatile
