@@ -1,20 +1,23 @@
 package com.perez.dutchlearner.ui
 
-import android.speech.tts.TextToSpeech
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Delete
-import androidx.compose.material.icons.filled.Phone
+import androidx.compose.material.icons.filled.KeyboardArrowDown
+import androidx.compose.material.icons.filled.KeyboardArrowUp
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.layout.Layout
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.perez.dutchlearner.database.PhraseEntity
+import com.perez.dutchlearner.language.DutchTokenizer
 import java.text.SimpleDateFormat
 import java.util.*
 
@@ -25,8 +28,11 @@ fun PhrasesScreen(
     onNavigateBack: () -> Unit,
     onDeletePhrase: (PhraseEntity) -> Unit,
     onSpeakDutch: (String) -> Unit,
+    onWordTap: (String) -> Unit,
     ttsReady: Boolean
 ) {
+    var expandedPhraseId by remember { mutableStateOf<Long?>(null) }
+
     Scaffold(
         topBar = {
             TopAppBar(
@@ -88,8 +94,13 @@ fun PhrasesScreen(
                     items(phrases, key = { it.id }) { phrase ->
                         PhraseCard(
                             phrase = phrase,
+                            isExpanded = expandedPhraseId == phrase.id,
+                            onExpandToggle = {
+                                expandedPhraseId = if (expandedPhraseId == phrase.id) null else phrase.id
+                            },
                             onDelete = { onDeletePhrase(phrase) },
                             onSpeak = { onSpeakDutch(phrase.dutchText) },
+                            onWordTap = onWordTap,
                             ttsReady = ttsReady
                         )
                     }
@@ -146,11 +157,16 @@ private fun EmptyState() {
 @Composable
 private fun PhraseCard(
     phrase: PhraseEntity,
+    isExpanded: Boolean,
+    onExpandToggle: () -> Unit,
     onDelete: () -> Unit,
     onSpeak: () -> Unit,
+    onWordTap: (String) -> Unit,
     ttsReady: Boolean
 ) {
     var showDeleteDialog by remember { mutableStateOf(false) }
+    var showSnackbar by remember { mutableStateOf(false) }
+    var lastAddedWord by remember { mutableStateOf("") }
 
     Card(
         modifier = Modifier.fillMaxWidth(),
@@ -189,10 +205,24 @@ private fun PhraseCard(
                     fontWeight = FontWeight.Bold,
                     color = MaterialTheme.colorScheme.tertiary
                 )
-                Text(
-                    text = phrase.dutchText,
-                    style = MaterialTheme.typography.bodyLarge
-                )
+
+                if (isExpanded) {
+                    // Mostrar palabras clickeables
+                    ClickableDutchText(
+                        text = phrase.dutchText,
+                        onWordClick = { word ->
+                            onWordTap(word)
+                            lastAddedWord = word
+                            showSnackbar = true
+                        }
+                    )
+                } else {
+                    // Mostrar texto normal
+                    Text(
+                        text = phrase.dutchText,
+                        style = MaterialTheme.typography.bodyLarge
+                    )
+                }
             }
 
             // Palabras desconocidas (si hay)
@@ -241,6 +271,20 @@ private fun PhraseCard(
                     )
                 }
             }
+
+            // Botón expandir/contraer
+            TextButton(
+                onClick = onExpandToggle,
+                modifier = Modifier.align(Alignment.CenterHorizontally)
+            ) {
+                Text(if (isExpanded) "Contraer" else "Toca palabras para agregar ➕")
+                Spacer(modifier = Modifier.width(4.dp))
+                Icon(
+                    if (isExpanded) Icons.Default.KeyboardArrowUp else Icons.Default.KeyboardArrowDown,
+                    contentDescription = null,
+                    modifier = Modifier.size(20.dp)
+                )
+            }
         }
     }
 
@@ -269,6 +313,118 @@ private fun PhraseCard(
                 }
             }
         )
+    }
+
+    // Snackbar de confirmación
+    if (showSnackbar) {
+        LaunchedEffect(lastAddedWord) {
+            kotlinx.coroutines.delay(2000)
+            showSnackbar = false
+        }
+
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(16.dp),
+            contentAlignment = Alignment.BottomCenter
+        ) {
+            Snackbar {
+                Text("✅ '$lastAddedWord' agregada a desconocidas")
+            }
+        }
+    }
+}
+
+@Composable
+private fun ClickableDutchText(
+    text: String,
+    onWordClick: (String) -> Unit
+) {
+    val tokenizer = remember { DutchTokenizer() }
+    val words = remember(text) { tokenizer.tokenize(text) }
+
+    Column {
+        Text(
+            "👆 Toca una palabra para agregarla:",
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.primary,
+            modifier = Modifier.padding(bottom = 8.dp)
+        )
+
+        FlowRow(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalSpacing = 4.dp,
+            verticalSpacing = 4.dp
+        ) {
+            words.forEach { word ->
+                WordChip(
+                    word = word,
+                    onClick = { onWordClick(word) }
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun WordChip(
+    word: String,
+    onClick: () -> Unit
+) {
+    Surface(
+        modifier = Modifier.clickable(onClick = onClick),
+        shape = MaterialTheme.shapes.small,
+        color = MaterialTheme.colorScheme.secondaryContainer,
+        tonalElevation = 2.dp
+    ) {
+        Text(
+            text = word,
+            modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp),
+            style = MaterialTheme.typography.bodyMedium,
+            color = MaterialTheme.colorScheme.onSecondaryContainer
+        )
+    }
+}
+
+@Composable
+private fun FlowRow(
+    modifier: Modifier = Modifier,
+    horizontalSpacing: androidx.compose.ui.unit.Dp = 0.dp,
+    verticalSpacing: androidx.compose.ui.unit.Dp = 0.dp,
+    content: @Composable () -> Unit
+) {
+    Layout(
+        content = content,
+        modifier = modifier
+    ) { measurables, constraints ->
+        val placeables = measurables.map { it.measure(constraints) }
+
+        var xPosition = 0
+        var yPosition = 0
+        var maxHeight = 0
+
+        val positions = mutableListOf<Pair<Int, Int>>()
+
+        placeables.forEach { placeable ->
+            if (xPosition + placeable.width > constraints.maxWidth && xPosition > 0) {
+                xPosition = 0
+                yPosition += maxHeight + verticalSpacing.roundToPx()
+                maxHeight = 0
+            }
+
+            positions.add(Pair(xPosition, yPosition))
+            xPosition += placeable.width + horizontalSpacing.roundToPx()
+            maxHeight = maxOf(maxHeight, placeable.height)
+        }
+
+        val height = yPosition + maxHeight
+
+        layout(constraints.maxWidth, height) {
+            placeables.forEachIndexed { index, placeable ->
+                val (x, y) = positions[index]
+                placeable.place(x, y)
+            }
+        }
     }
 }
 

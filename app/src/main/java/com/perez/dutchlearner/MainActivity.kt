@@ -173,6 +173,11 @@ class MainActivity : ComponentActivity(), TextToSpeech.OnInitListener {
                         }
                     },
                     onSpeakDutch = { text -> speakDutch(text) },
+                    onWordTap = { word -> // ⬅️ NUEVO CALLBACK
+                        lifecycleScope.launch {
+                            addWordToUnknown(word)
+                        }
+                    },
                     ttsReady = ttsReady
                 )
             }
@@ -681,7 +686,96 @@ class MainActivity : ComponentActivity(), TextToSpeech.OnInitListener {
             ).show()
         }
     }
+    private suspend fun addWordToUnknown(word: String) {
+        withContext(Dispatchers.IO) {
+            try {
+                val normalized = word.lowercase().trim()
 
+                if (normalized.length < 2) return@withContext // Ignorar palabras muy cortas
+
+                database?.let { db ->
+                    val existing = db.unknownWordDao().getWord(normalized)
+
+                    if (existing != null) {
+                        // Ya existe, incrementar contador
+                        db.unknownWordDao().incrementWordSeen(normalized)
+
+                        withContext(Dispatchers.Main) {
+                            Toast.makeText(
+                                this@MainActivity,
+                                "↗️ '$normalized' contador actualizado",
+                                Toast.LENGTH_SHORT
+                            ).show()
+                        }
+                    } else {
+                        // Nueva palabra, calcular dificultad
+                        val difficulty = when {
+                            normalized.length <= 4 -> 0  // Fácil
+                            normalized.length <= 8 -> 1  // Media
+                            else -> 2                     // Difícil
+                        }
+
+                        db.unknownWordDao().insertWord(
+                            com.perez.dutchlearner.database.UnknownWordEntity(
+                                word = normalized,
+                                difficulty = difficulty
+                            )
+                        )
+
+                        withContext(Dispatchers.Main) {
+                            Toast.makeText(
+                                this@MainActivity,
+                                "✅ '$normalized' agregada a desconocidas",
+                                Toast.LENGTH_SHORT
+                            ).show()
+                        }
+                    }
+
+                    // Actualizar contadores de todas las frases
+                    refreshPhraseCounts()
+                }
+            } catch (e: Exception) {
+                e.printStackTrace()
+                withContext(Dispatchers.Main) {
+                    Toast.makeText(
+                        this@MainActivity,
+                        "Error al agregar palabra",
+                        Toast.LENGTH_SHORT
+                    ).show()
+                }
+            }
+        }
+    }
+    private suspend fun refreshPhraseCounts() {
+        withContext(Dispatchers.IO) {
+            try {
+                database?.let { db ->
+                    val allPhrases = db.phraseDao().getAllPhrasesSync()
+                    val unknownWords = db.unknownWordDao().getAllUnknownWordsSync()
+                        .filter { !it.learned }
+                        .map { it.word }
+                        .toSet()
+
+                    allPhrases.forEach { phrase ->
+                        val analysis = tokenizer.analyzeText(phrase.dutchText,
+                            unknownWords.map {
+                                com.perez.dutchlearner.database.UnknownWordEntity(word = it)
+                            }
+                        )
+
+                        db.phraseDao().updatePhrase(
+                            phrase.copy(
+                                unknownWordsCount = analysis.unknownCount,
+                                unknownWords = analysis.unknownWords.joinToString(",")
+                            )
+                        )
+                    }
+                }
+            } catch (e: Exception) {
+                e.printStackTrace()
+            }
+        }
+    }
     override fun onDestroy() {
         tts?.stop()
         tts?.shutdown()
@@ -689,3 +783,4 @@ class MainActivity : ComponentActivity(), TextToSpeech.OnInitListener {
         super.onDestroy()
     }
 }
+

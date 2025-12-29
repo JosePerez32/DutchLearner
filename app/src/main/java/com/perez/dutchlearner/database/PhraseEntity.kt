@@ -157,4 +157,7 @@ interface UnknownWordDao {
 
     @Query("DELETE FROM unknown_words WHERE learned = 1")
     suspend fun deleteAllLearned()
+
+    @Query("SELECT * FROM unknown_words ORDER BY added_at DESC")
+    suspend fun getAllUnknownWordsSync(): List<UnknownWordEntity>
 }
