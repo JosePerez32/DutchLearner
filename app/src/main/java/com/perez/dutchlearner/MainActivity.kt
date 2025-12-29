@@ -23,6 +23,8 @@ import androidx.lifecycle.lifecycleScope
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
+import androidx.compose.foundation.clickable
+import androidx.compose.ui.text.style.TextAlign
 import com.perez.dutchlearner.audio.AudioRecorderHelper
 import com.perez.dutchlearner.database.AppDatabase
 import com.perez.dutchlearner.database.PhraseEntity
@@ -283,6 +285,33 @@ class MainActivity : ComponentActivity(), TextToSpeech.OnInitListener {
                             }
                         }
                     },
+                    onEditAlarm = { alarm, newHour, newMinute ->  // ⬅️ 3 parámetros!
+                        // Implementar edición de alarma
+                        lifecycleScope.launch {
+                            withContext(Dispatchers.IO) {
+                                // Cancelar alarma vieja
+                                com.perez.dutchlearner.notifications.MultiAlarmScheduler(this@MainActivity)
+                                    .cancelAlarm(alarm.id)
+
+                                // Actualizar en base de datos
+                                val updatedAlarm = alarm.copy(hour = newHour, minute = newMinute)
+                                database?.alarmDao()?.updateAlarm(updatedAlarm)
+
+                                // Reprogramar con nueva hora
+                                com.perez.dutchlearner.notifications.MultiAlarmScheduler(this@MainActivity)
+                                    .scheduleAlarm(updatedAlarm)
+                            }
+
+                            // Mostrar confirmación
+                            withContext(Dispatchers.Main) {
+                                Toast.makeText(
+                                    this@MainActivity,
+                                    "⏰ Alarma actualizada a $newHour:$newMinute",
+                                    Toast.LENGTH_SHORT
+                                ).show()
+                            }
+                        }
+                    },
                     onDeleteAlarm = { alarm ->
                         lifecycleScope.launch {
                             withContext(Dispatchers.IO) {
@@ -304,7 +333,6 @@ class MainActivity : ComponentActivity(), TextToSpeech.OnInitListener {
             }
         }
     }
-
     @Composable
     fun RecorderScreen(
         onNavigateToPhrases: () -> Unit,
@@ -325,39 +353,116 @@ class MainActivity : ComponentActivity(), TextToSpeech.OnInitListener {
             horizontalAlignment = Alignment.CenterHorizontally,
             verticalArrangement = Arrangement.spacedBy(16.dp)
         ) {
-            // Header con botones de navegación
+            // Header
+            Text(
+                text = "🇳🇱 Dutch Learner",
+                style = MaterialTheme.typography.headlineMedium,
+                modifier = Modifier.padding(vertical = 16.dp)
+            )
+
+            // ⬇️ BOTONES GRANDES (NUEVO)
             Row(
                 modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
             ) {
-                Text(
-                    text = "🇳🇱 Dutch Learner",
-                    style = MaterialTheme.typography.headlineMedium
-                )
-
-                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    IconButton(onClick = onNavigateToVocabulary) {
+                // Botón Vocabulario
+                Card(
+                    modifier = Modifier
+                        .weight(1f)
+                        .height(100.dp)
+                        .clickable { onNavigateToVocabulary() },
+                    colors = CardDefaults.cardColors(
+                        containerColor = MaterialTheme.colorScheme.primaryContainer
+                    ),
+                    elevation = CardDefaults.cardElevation(defaultElevation = 4.dp)
+                ) {
+                    Column(
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .padding(12.dp),
+                        horizontalAlignment = Alignment.CenterHorizontally,
+                        verticalArrangement = Arrangement.Center
+                    ) {
                         Icon(
                             imageVector = Icons.Default.Favorite,
-                            contentDescription = "Palabras desconocidas",
-                            tint = MaterialTheme.colorScheme.primary
+                            contentDescription = null,
+                            modifier = Modifier.size(32.dp),
+                            tint = MaterialTheme.colorScheme.onPrimaryContainer
+                        )
+                        Spacer(modifier = Modifier.height(8.dp))
+                        Text(
+                            text = "Palabras",
+                            style = MaterialTheme.typography.labelLarge,
+                            color = MaterialTheme.colorScheme.onPrimaryContainer,
+                            textAlign = TextAlign.Center
                         )
                     }
+                }
 
-                    IconButton(onClick = onNavigateToPhrases) {
+                // Botón Frases
+                Card(
+                    modifier = Modifier
+                        .weight(1f)
+                        .height(100.dp)
+                        .clickable { onNavigateToPhrases() },
+                    colors = CardDefaults.cardColors(
+                        containerColor = MaterialTheme.colorScheme.secondaryContainer
+                    ),
+                    elevation = CardDefaults.cardElevation(defaultElevation = 4.dp)
+                ) {
+                    Column(
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .padding(12.dp),
+                        horizontalAlignment = Alignment.CenterHorizontally,
+                        verticalArrangement = Arrangement.Center
+                    ) {
                         Icon(
                             imageVector = Icons.Default.List,
-                            contentDescription = "Ver frases guardadas",
-                            tint = MaterialTheme.colorScheme.primary
+                            contentDescription = null,
+                            modifier = Modifier.size(32.dp),
+                            tint = MaterialTheme.colorScheme.onSecondaryContainer
+                        )
+                        Spacer(modifier = Modifier.height(8.dp))
+                        Text(
+                            text = "Frases",
+                            style = MaterialTheme.typography.labelLarge,
+                            color = MaterialTheme.colorScheme.onSecondaryContainer,
+                            textAlign = TextAlign.Center
                         )
                     }
+                }
 
-                    IconButton(onClick = onNavigateToSettings) {
+                // Botón Configuración
+                Card(
+                    modifier = Modifier
+                        .weight(1f)
+                        .height(100.dp)
+                        .clickable { onNavigateToSettings() },
+                    colors = CardDefaults.cardColors(
+                        containerColor = MaterialTheme.colorScheme.tertiaryContainer
+                    ),
+                    elevation = CardDefaults.cardElevation(defaultElevation = 4.dp)
+                ) {
+                    Column(
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .padding(12.dp),
+                        horizontalAlignment = Alignment.CenterHorizontally,
+                        verticalArrangement = Arrangement.Center
+                    ) {
                         Icon(
                             imageVector = Icons.Default.Settings,
-                            contentDescription = "Configuración",
-                            tint = MaterialTheme.colorScheme.primary
+                            contentDescription = null,
+                            modifier = Modifier.size(32.dp),
+                            tint = MaterialTheme.colorScheme.onTertiaryContainer
+                        )
+                        Spacer(modifier = Modifier.height(8.dp))
+                        Text(
+                            text = "Ajustes",
+                            style = MaterialTheme.typography.labelLarge,
+                            color = MaterialTheme.colorScheme.onTertiaryContainer,
+                            textAlign = TextAlign.Center
                         )
                     }
                 }
@@ -371,7 +476,7 @@ class MainActivity : ComponentActivity(), TextToSpeech.OnInitListener {
                 )
             }
 
-            Spacer(modifier = Modifier.height(32.dp))
+            Spacer(modifier = Modifier.height(16.dp))
 
             // Botón de grabación
             Button(
@@ -412,8 +517,15 @@ class MainActivity : ComponentActivity(), TextToSpeech.OnInitListener {
                                     errorMessage = null
                                     statusMessage = "✅ ¡Listo!"
                                 }.onFailure { e ->
-                                    errorMessage = "Error de traducción: ${e.message}"
-                                    statusMessage = ""
+                                    // ⬇️ NUEVO: Manejo de error sin internet
+                                    if (e.message?.contains("Unable to resolve host") == true) {
+                                        errorMessage = "⚠️ Sin internet. Guardando solo en español..."
+                                        translatedText = "" // Vacío = no traducido
+                                        statusMessage = ""
+                                    } else {
+                                        errorMessage = "Error de traducción: ${e.message}"
+                                        statusMessage = ""
+                                    }
                                 }
 
                             } catch (e: Exception) {
@@ -525,6 +637,23 @@ class MainActivity : ComponentActivity(), TextToSpeech.OnInitListener {
                     modifier = Modifier.fillMaxWidth()
                 ) {
                     Text("💾 Guardar frase")
+                }
+            } else if (transcribedText.isNotEmpty() && errorMessage?.contains("Sin internet") == true) {
+                // ⬇️ NUEVO: Permitir guardar sin traducción
+                Button(
+                    onClick = {
+                        lifecycleScope.launch {
+                            savePhraseToDatabase(transcribedText, "[Sin traducción]")
+                            Toast.makeText(
+                                this@MainActivity,
+                                "✅ Frase guardada (sin traducción)",
+                                Toast.LENGTH_SHORT
+                            ).show()
+                        }
+                    },
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Text("💾 Guardar solo en español")
                 }
             }
         }

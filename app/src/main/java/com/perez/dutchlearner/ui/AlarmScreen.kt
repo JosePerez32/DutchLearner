@@ -1,5 +1,8 @@
+// REEMPLAZAR COMPLETAMENTE AlarmsScreen.kt con este código
+
 package com.perez.dutchlearner.ui
 
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -20,12 +23,12 @@ import com.perez.dutchlearner.database.AlarmEntity
 fun AlarmsScreen(
     alarms: List<AlarmEntity>,
     onNavigateBack: () -> Unit,
-    onAddAlarm: (hour: Int, minute: Int) -> Unit,
+    onAddAlarm: (Int, Int) -> Unit,
     onToggleAlarm: (AlarmEntity, Boolean) -> Unit,
+    onEditAlarm: (AlarmEntity, Int, Int) -> Unit, // ⬅️ NUEVO
     onDeleteAlarm: (AlarmEntity) -> Unit
 ) {
     var showAddDialog by remember { mutableStateOf(false) }
-    var showMaxAlarmsDialog by remember { mutableStateOf(false) }
 
     Scaffold(
         topBar = {
@@ -40,19 +43,13 @@ fun AlarmsScreen(
                     }
                 },
                 actions = {
-                    IconButton(
-                        onClick = {
-                            if (alarms.size < 5) {
-                                showAddDialog = true
-                            } else {
-                                showMaxAlarmsDialog = true
-                            }
+                    if (alarms.size < 5) {
+                        IconButton(onClick = { showAddDialog = true }) {
+                            Icon(
+                                imageVector = Icons.Default.Add,
+                                contentDescription = "Agregar alarma"
+                            )
                         }
-                    ) {
-                        Icon(
-                            imageVector = Icons.Default.Add,
-                            contentDescription = "Agregar alarma"
-                        )
                     }
                 },
                 colors = TopAppBarDefaults.topAppBarColors(
@@ -67,46 +64,24 @@ fun AlarmsScreen(
                 .fillMaxSize()
                 .padding(paddingValues)
         ) {
-            // Información superior
-            Surface(
-                modifier = Modifier.fillMaxWidth(),
-                color = MaterialTheme.colorScheme.secondaryContainer,
-                tonalElevation = 2.dp
-            ) {
-                Row(
-                    modifier = Modifier.padding(16.dp),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Column {
-                        Text(
-                            text = "${alarms.size} / 5 alarmas",
-                            style = MaterialTheme.typography.titleMedium,
-                            fontWeight = FontWeight.Bold
-                        )
-                        Text(
-                            text = "${alarms.count { it.enabled }} activas",
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSecondaryContainer
-                        )
-                    }
-
-                    if (alarms.size < 5) {
-                        Text(
-                            text = "Puedes agregar ${5 - alarms.size} más",
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.primary
-                        )
-                    }
-                }
-            }
-
-            Divider()
-
-            // Lista de alarmas
             if (alarms.isEmpty()) {
                 EmptyAlarmsState()
             } else {
+                // Contador
+                Surface(
+                    modifier = Modifier.fillMaxWidth(),
+                    color = MaterialTheme.colorScheme.secondaryContainer,
+                    tonalElevation = 2.dp
+                ) {
+                    Text(
+                        text = "${alarms.size} / 5 alarmas configuradas",
+                        modifier = Modifier.padding(16.dp),
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSecondaryContainer
+                    )
+                }
+
+                // Lista de alarmas
                 LazyColumn(
                     modifier = Modifier.fillMaxSize(),
                     contentPadding = PaddingValues(16.dp),
@@ -116,7 +91,8 @@ fun AlarmsScreen(
                         AlarmCard(
                             alarm = alarm,
                             onToggle = { enabled -> onToggleAlarm(alarm, enabled) },
-                            onDelete = { onDeleteAlarm(alarm) }
+                            onDelete = { onDeleteAlarm(alarm) },
+                            onEdit = { hour, minute -> onEditAlarm(alarm, hour, minute) } // ⬅️ NUEVO
                         )
                     }
                 }
@@ -126,27 +102,11 @@ fun AlarmsScreen(
 
     // Diálogo agregar alarma
     if (showAddDialog) {
-        TimePickerDialog(
-            initialHour = 9,
-            initialMinute = 0,
-            onTimeSelected = { hour, minute ->
+        AddAlarmDialog(
+            onDismiss = { showAddDialog = false },
+            onConfirm = { hour, minute ->
                 onAddAlarm(hour, minute)
                 showAddDialog = false
-            },
-            onDismiss = { showAddDialog = false }
-        )
-    }
-
-    // Diálogo límite alcanzado
-    if (showMaxAlarmsDialog) {
-        AlertDialog(
-            onDismissRequest = { showMaxAlarmsDialog = false },
-            title = { Text("Límite alcanzado") },
-            text = { Text("Ya tienes 5 alarmas programadas. Elimina alguna para agregar otra.") },
-            confirmButton = {
-                TextButton(onClick = { showMaxAlarmsDialog = false }) {
-                    Text("Entendido")
-                }
             }
         )
     }
@@ -168,11 +128,11 @@ private fun EmptyAlarmsState() {
                 style = MaterialTheme.typography.displayLarge
             )
             Text(
-                text = "Sin alarmas",
+                text = "No hay alarmas",
                 style = MaterialTheme.typography.titleLarge
             )
             Text(
-                text = "Presiona + para agregar tu primera alarma\nPuedes tener hasta 5 alarmas",
+                text = "Toca + para agregar tu primera alarma",
                 style = MaterialTheme.typography.bodyMedium,
                 color = MaterialTheme.colorScheme.onSurfaceVariant
             )
@@ -184,22 +144,15 @@ private fun EmptyAlarmsState() {
 private fun AlarmCard(
     alarm: AlarmEntity,
     onToggle: (Boolean) -> Unit,
-    onDelete: () -> Unit
+    onDelete: () -> Unit,
+    onEdit: (Int, Int) -> Unit
 ) {
     var showDeleteDialog by remember { mutableStateOf(false) }
+    var showEditDialog by remember { mutableStateOf(false) }
 
     Card(
         modifier = Modifier.fillMaxWidth(),
-        elevation = CardDefaults.cardElevation(
-            defaultElevation = if (alarm.enabled) 2.dp else 1.dp
-        ),
-        colors = if (alarm.enabled) {
-            CardDefaults.cardColors()
-        } else {
-            CardDefaults.cardColors(
-                containerColor = MaterialTheme.colorScheme.surfaceVariant
-            )
-        }
+        elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
     ) {
         Row(
             modifier = Modifier
@@ -208,39 +161,25 @@ private fun AlarmCard(
             horizontalArrangement = Arrangement.SpaceBetween,
             verticalAlignment = Alignment.CenterVertically
         ) {
-            Column(modifier = Modifier.weight(1f)) {
+            // Hora clickeable
+            Column(
+                modifier = Modifier
+                    .weight(1f)
+                    .clickable { showEditDialog = true }
+            ) {
                 Text(
                     text = alarm.getTimeString(),
-                    style = MaterialTheme.typography.displaySmall,
-                    fontWeight = FontWeight.Bold,
-                    color = if (alarm.enabled) {
-                        MaterialTheme.colorScheme.onSurface
-                    } else {
-                        MaterialTheme.colorScheme.onSurfaceVariant
-                    }
+                    style = MaterialTheme.typography.headlineMedium,
+                    fontWeight = FontWeight.Bold
                 )
-
                 Text(
-                    text = if (alarm.enabled) "Activa" else "Desactivada",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = if (alarm.enabled) {
-                        MaterialTheme.colorScheme.primary
-                    } else {
-                        MaterialTheme.colorScheme.onSurfaceVariant
-                    }
-                )
-
-                Text(
-                    text = "Todos los días",
+                    text = "Toca para editar",
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
             }
 
-            Row(
-                horizontalArrangement = Arrangement.spacedBy(8.dp),
-                verticalAlignment = Alignment.CenterVertically
-            ) {
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 Switch(
                     checked = alarm.enabled,
                     onCheckedChange = onToggle
@@ -257,12 +196,12 @@ private fun AlarmCard(
         }
     }
 
-    // Confirmación de eliminación
+    // Diálogo de eliminación
     if (showDeleteDialog) {
         AlertDialog(
             onDismissRequest = { showDeleteDialog = false },
             title = { Text("¿Eliminar alarma?") },
-            text = { Text("Se eliminará la alarma de las ${alarm.getTimeString()}") },
+            text = { Text("La alarma de ${alarm.getTimeString()} será eliminada.") },
             confirmButton = {
                 TextButton(
                     onClick = {
@@ -283,4 +222,144 @@ private fun AlarmCard(
             }
         )
     }
+
+    // Diálogo de edición
+    if (showEditDialog) {
+        var selectedHour by remember { mutableStateOf(alarm.hour) }
+        var selectedMinute by remember { mutableStateOf(alarm.minute) }
+
+        AlertDialog(
+            onDismissRequest = { showEditDialog = false },
+            title = { Text("Editar alarma") },
+            text = {
+                Column(
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    verticalArrangement = Arrangement.spacedBy(16.dp)
+                ) {
+                    Text("Selecciona la nueva hora:")
+
+                    Row(
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        OutlinedTextField(
+                            value = String.format("%02d", selectedHour),
+                            onValueChange = {
+                                it.toIntOrNull()?.let { hour ->
+                                    if (hour in 0..23) selectedHour = hour
+                                }
+                            },
+                            label = { Text("Hora") },
+                            modifier = Modifier.width(80.dp),
+                            singleLine = true
+                        )
+
+                        Text(":", style = MaterialTheme.typography.headlineMedium)
+
+                        OutlinedTextField(
+                            value = String.format("%02d", selectedMinute),
+                            onValueChange = {
+                                it.toIntOrNull()?.let { minute ->
+                                    if (minute in 0..59) selectedMinute = minute
+                                }
+                            },
+                            label = { Text("Min") },
+                            modifier = Modifier.width(80.dp),
+                            singleLine = true
+                        )
+                    }
+
+                    Text(
+                        text = "Nueva hora: ${String.format("%02d:%02d", selectedHour, selectedMinute)}",
+                        style = MaterialTheme.typography.titleMedium,
+                        color = MaterialTheme.colorScheme.primary
+                    )
+                }
+            },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        onEdit(selectedHour, selectedMinute)
+                        showEditDialog = false
+                    }
+                ) {
+                    Text("Guardar")
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showEditDialog = false }) {
+                    Text("Cancelar")
+                }
+            }
+        )
+    }
+}
+
+@Composable
+private fun AddAlarmDialog(
+    onDismiss: () -> Unit,
+    onConfirm: (Int, Int) -> Unit
+) {
+    var selectedHour by remember { mutableStateOf(8) }
+    var selectedMinute by remember { mutableStateOf(0) }
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("Nueva alarma") },
+        text = {
+            Column(
+                horizontalAlignment = Alignment.CenterHorizontally,
+                verticalArrangement = Arrangement.spacedBy(16.dp)
+            ) {
+                Text("Selecciona la hora:")
+
+                Row(
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    OutlinedTextField(
+                        value = String.format("%02d", selectedHour),
+                        onValueChange = {
+                            it.toIntOrNull()?.let { hour ->
+                                if (hour in 0..23) selectedHour = hour
+                            }
+                        },
+                        label = { Text("Hora") },
+                        modifier = Modifier.width(80.dp),
+                        singleLine = true
+                    )
+
+                    Text(":", style = MaterialTheme.typography.headlineMedium)
+
+                    OutlinedTextField(
+                        value = String.format("%02d", selectedMinute),
+                        onValueChange = {
+                            it.toIntOrNull()?.let { minute ->
+                                if (minute in 0..59) selectedMinute = minute
+                            }
+                        },
+                        label = { Text("Min") },
+                        modifier = Modifier.width(80.dp),
+                        singleLine = true
+                    )
+                }
+
+                Text(
+                    text = String.format("%02d:%02d", selectedHour, selectedMinute),
+                    style = MaterialTheme.typography.headlineMedium,
+                    color = MaterialTheme.colorScheme.primary
+                )
+            }
+        },
+        confirmButton = {
+            TextButton(onClick = { onConfirm(selectedHour, selectedMinute) }) {
+                Text("Agregar")
+            }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) {
+                Text("Cancelar")
+            }
+        }
+    )
 }

@@ -9,6 +9,9 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withContext
+import com.perez.dutchlearner.notifications.NotificationHelper
+import com.perez.dutchlearner.notifications.NotificationContentGenerator
+
 
 class AlarmReceiver : BroadcastReceiver() {
 
@@ -29,6 +32,17 @@ class AlarmReceiver : BroadcastReceiver() {
 //                // Opcional para futuro
 //            }
 //        }
+        Log.d("DutchLearner", "AlarmReceiver triggered")
+
+        try {
+            // Usar notificación inteligente en vez de genérica
+            val notificationHelper = NotificationContentGenerator(context)
+            //notificationHelper.showSmartNotification()
+            //notificationHelper.generateContent()
+            Log.d("DutchLearner", "Smart notification shown")
+        } catch (e: Exception) {
+            Log.e("DutchLearner", "Error showing notification", e)
+        }
         if (intent.action == "com.perez.dutchlearner.NOTIFICATION_ALARM") {
             Log.d("DutchLearner", "Alarma recibida, mostrando notificación")
 
