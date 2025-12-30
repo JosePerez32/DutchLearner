@@ -101,6 +101,37 @@ class DeepLTranslationService(private val context: Context) {
             Result.failure(e)
         }
     }
+    suspend fun translateToES(dutchText: String): Result<String> = withContext(Dispatchers.IO) {
+        try {
+            // 1. Buscar en cache local
+            val cacheKey = "nl_es_${dutchText.hashCode()}"
+            val cachedTranslation = cache.getString(cacheKey, null)
+
+            if (cachedTranslation != null) {
+                return@withContext Result.success(cachedTranslation)
+            }
+
+            // 2. Llamar a DeepL API
+            val response = api.translate(
+                authKey = "DeepL-Auth-Key $apiKey",
+                text = dutchText,
+                targetLang = "ES",
+                sourceLang = "NL"
+            )
+
+            val translatedText = response.translations.firstOrNull()?.text
+                ?: return@withContext Result.failure(Exception("No translation received"))
+
+            // 3. Guardar en cache
+            cache.edit().putString(cacheKey, translatedText).apply()
+
+            Result.success(translatedText)
+
+        } catch (e: Exception) {
+            // Si falla (sin internet, límite excedido, etc.)
+            Result.failure(e)
+        }
+    }
 
     /**
      * Limpia el cache de traducciones

@@ -133,14 +133,15 @@ Si encuentras un bug o tienes una idea:
 
 ## 📄 Licencia
 
-MIT License - Ver [LICENSE](LICENSE) para más detalles.
+CC0-1.0 license - Ver [LICENSE](LICENSE) para más detalles.
 
 ---
 
 ## 👤 Autor
 
-**Tu Nombre**
-- GitHub: [@tu-usuario](https://github.com/tu-usuario)
+**José C. Pérez R.**
+- Website: https://jcperez.dev
+- GitHub: [@Jose Perez](https://github.com/JosePerez32)
 
 ---
 

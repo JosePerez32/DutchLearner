@@ -1,5 +1,7 @@
 <resources>
     <string name="record_quick">Grabar rápido</string>
-    <string name="widget_description">Botón de grabación rápida</string>
     <string name="app_name">Dutch Learner</string>
+    <!-- AGREGAR en app/src/main/res/values/strings.xml -->
+
+    <string name="widget_description">Botón de grabación rápida para Dutch Learner</string>
 </resources>
