@@ -13,7 +13,8 @@
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
     <uses-permission android:name="com.android.alarm.permission.SET_ALARM" />
     <uses-permission android:name="com.android.permission.SCHEDULE_EXACT_ALARM"/>
-
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MICROPHONE" />
     <uses-feature android:name="android.hardware.alarm" android:required="false" />
     <uses-feature
         android:name="android.hardware.alarm"
@@ -28,6 +29,12 @@
         android:supportsRtl="true"
         android:theme="@style/Theme.DutchLearner"
         tools:targetApi="31">
+        <!-- Foreground Service para grabación en background -->
+        <service
+            android:name=".widget.RecordingForegroundService"
+            android:enabled="true"
+            android:exported="false"
+            android:foregroundServiceType="microphone" />
 
         <activity
             android:name=".MainActivity"
@@ -60,9 +67,25 @@
             </intent-filter>
         </receiver>
         <!-- Widget de grabación rápida -->
+
+        <!-- Widget de grabación rápida (NUEVO con Service) -->
+        <receiver
+            android:name=".widget.QuickRecordWidget"
+            android:exported="true"
+            android:label="Dutch Learner - Quick Record">
+            <intent-filter>
+                <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
+            </intent-filter>
+            <meta-data
+                android:name="android.appwidget.provider"
+                android:resource="@xml/quick_record_widget_info" />
+        </receiver>
+
+        <!-- Widget anterior (abre app) - OPCIONAL: puedes eliminarlo si solo quieres el nuevo -->
         <receiver
             android:name=".widget.RecordWidget"
-            android:exported="true">
+            android:exported="true"
+            android:label="Dutch Learner - Open App">
             <intent-filter>
                 <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
             </intent-filter>

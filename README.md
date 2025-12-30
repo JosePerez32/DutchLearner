@@ -155,6 +155,6 @@ CC0-1.0 license - Ver [LICENSE](LICENSE) para más detalles.
 
 ## 📊 Estado del proyecto
 
-**Versión actual:** 0.1.0 (Fase 1 MVP)  
-**Última actualización:** Diciembre 2024  
+**Versión actual:** 1.0.2 (Fase 1 MVP)  
+**Última actualización:** Diciembre 2025  
 **Estado:** 🟢 En desarrollo activo
