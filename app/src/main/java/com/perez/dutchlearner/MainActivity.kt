@@ -2,6 +2,7 @@ package com.perez.dutchlearner
 
 import android.Manifest
 import android.content.pm.PackageManager
+import android.os.Build
 import android.os.Bundle
 import android.speech.tts.TextToSpeech
 import android.widget.Toast
@@ -41,7 +42,9 @@ import java.io.File
 import java.util.*
 
 class MainActivity : ComponentActivity(), TextToSpeech.OnInitListener {
-
+    companion object {
+        private const val REQUEST_CODE = 100
+    }
     private var audioRecorderHelper: AudioRecorderHelper? = null
     private var audioFile: File? = null
     private var isRecording = false
@@ -175,7 +178,7 @@ class MainActivity : ComponentActivity(), TextToSpeech.OnInitListener {
                         }
                     },
                     onSpeakDutch = { text -> speakDutch(text) },
-                    onWordTap = { word -> // ⬅️ NUEVO CALLBACK
+                    onWordTap = { word ->
                         lifecycleScope.launch {
                             addWordToUnknown(word)
                         }
@@ -224,6 +227,14 @@ class MainActivity : ComponentActivity(), TextToSpeech.OnInitListener {
                                 database?.unknownWordDao()?.deleteWord(word)
                             }
                         }
+                    },
+                    onSpeakWord = { word ->  // ⬅️ NUEVO
+                        speakDutch(word)  // Usa tu función existente
+                        Toast.makeText(
+                            this@MainActivity,
+                            "🔊 Pronunciando: $word",
+                            Toast.LENGTH_SHORT
+                        ).show()
                     }
                 )
             }
@@ -331,6 +342,12 @@ class MainActivity : ComponentActivity(), TextToSpeech.OnInitListener {
                     }
                 )
             }
+        }
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            requestPermissions(arrayOf(
+                Manifest.permission.RECORD_AUDIO,
+                Manifest.permission.POST_NOTIFICATIONS
+            ), REQUEST_CODE)
         }
     }
     @Composable
@@ -657,6 +674,7 @@ class MainActivity : ComponentActivity(), TextToSpeech.OnInitListener {
                 }
             }
         }
+        
     }
 
     private fun checkPermissions() {
@@ -910,6 +928,40 @@ class MainActivity : ComponentActivity(), TextToSpeech.OnInitListener {
         tts?.shutdown()
         voskRecognizer?.release()
         super.onDestroy()
+    }
+
+    private suspend fun retryTranslation(phrase: PhraseEntity) {
+        withContext(Dispatchers.IO) {
+            try {
+                // Intentar traducir de nuevo
+                val result = translationService.translateToNL(phrase.spanishText)
+
+                result.onSuccess { dutchTranslation ->
+                    // Actualizar solo el texto holandés
+                    database?.phraseDao()?.updatePhrase(
+                        phrase.copy(dutchText = dutchTranslation)
+                    )
+
+                    withContext(Dispatchers.Main) {
+                        Toast.makeText(
+                            this@MainActivity,
+                            "✅ Traducción completada",
+                            Toast.LENGTH_SHORT
+                        ).show()
+                    }
+                }.onFailure { error ->
+                    withContext(Dispatchers.Main) {
+                        Toast.makeText(
+                            this@MainActivity,
+                            "❌ Error: ${error.message}",
+                            Toast.LENGTH_SHORT
+                        ).show()
+                    }
+                }
+            } catch (e: Exception) {
+                e.printStackTrace()
+            }
+        }
     }
 }
 

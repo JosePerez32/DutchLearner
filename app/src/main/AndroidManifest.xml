@@ -35,7 +35,11 @@
             android:enabled="true"
             android:exported="false"
             android:foregroundServiceType="microphone" />
-
+        <service
+            android:name=".widget.RecordingService"
+            android:enabled="true"
+            android:exported="false"
+            android:foregroundServiceType="microphone" />
         <activity
             android:name=".MainActivity"
             android:exported="true"
@@ -75,6 +79,7 @@
             android:label="Dutch Learner - Quick Record">
             <intent-filter>
                 <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
+                <action android:name="com.perez.dutchlearner.widget.ACTION_RECORD" />
             </intent-filter>
             <meta-data
                 android:name="android.appwidget.provider"

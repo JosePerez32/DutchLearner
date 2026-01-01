@@ -77,7 +77,8 @@ class NotificationContentGenerator(private val context: Context) {
 
         selectedWords.forEach { word ->
             try {
-                val result = translationService.translateToNL(word.word)
+                //val result = translationService.translateToNL(word.word)
+                val result = translationService.translateToES(word.word)
                 result.onSuccess { translation ->
                     wordsWithTranslations.add(word.word to translation)
                 }.onFailure {

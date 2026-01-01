@@ -15,6 +15,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import androidx.compose.material.icons.filled.PlayArrow
 import com.perez.dutchlearner.database.UnknownWordEntity
 import java.text.SimpleDateFormat
 import java.util.*
@@ -26,7 +27,8 @@ fun UnknownWordsScreen(
     onNavigateBack: () -> Unit,
     onAddWord: (String) -> Unit,
     onMarkAsLearned: (UnknownWordEntity) -> Unit,
-    onDeleteWord: (UnknownWordEntity) -> Unit
+    onDeleteWord: (UnknownWordEntity) -> Unit,
+    onSpeakWord: (String) -> Unit
 ) {
     var showAddDialog by remember { mutableStateOf(false) }
     var showFilter by remember { mutableStateOf(false) } // Mostrar aprendidas
@@ -111,7 +113,8 @@ fun UnknownWordsScreen(
                         UnknownWordCard(
                             word = word,
                             onMarkAsLearned = { onMarkAsLearned(word) },
-                            onDelete = { onDeleteWord(word) }
+                            onDelete = { onDeleteWord(word) },
+                            onSpeak = { onSpeakWord(word.word) }
                         )
                     }
                 }
@@ -220,7 +223,8 @@ private fun EmptyUnknownWordsState(showingAll: Boolean) {
 private fun UnknownWordCard(
     word: UnknownWordEntity,
     onMarkAsLearned: () -> Unit,
-    onDelete: () -> Unit
+    onDelete: () -> Unit,
+    onSpeak: () -> Unit
 ) {
     var showDeleteDialog by remember { mutableStateOf(false) }
 
@@ -330,6 +334,42 @@ private fun UnknownWordCard(
                 }
             }
         )
+    }
+    Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+        // NUEVO BOTÓN DE ESCUCHAR (altavoz)
+        IconButton(
+            onClick = onSpeak,
+            colors = IconButtonDefaults.iconButtonColors(
+                contentColor = MaterialTheme.colorScheme.primary
+            )
+        ) {
+            Icon(
+                imageVector = Icons.Default.PlayArrow,  // Icono de parlante
+                contentDescription = "Escuchar pronunciación"
+            )
+        }
+
+        if (!word.learned) {
+            IconButton(
+                onClick = onMarkAsLearned,
+                colors = IconButtonDefaults.iconButtonColors(
+                    contentColor = MaterialTheme.colorScheme.primary
+                )
+            ) {
+                Icon(
+                    imageVector = Icons.Default.Check,
+                    contentDescription = "Marcar como aprendida"
+                )
+            }
+        }
+
+        IconButton(onClick = { showDeleteDialog = true }) {
+            Icon(
+                imageVector = Icons.Default.Delete,
+                contentDescription = "Eliminar",
+                tint = MaterialTheme.colorScheme.error
+            )
+        }
     }
 }
 

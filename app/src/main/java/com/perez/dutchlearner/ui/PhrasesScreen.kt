@@ -16,10 +16,14 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.layout.Layout
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import androidx.compose.material.icons.filled.Refresh
+import androidx.lifecycle.lifecycleScope
 import com.perez.dutchlearner.database.PhraseEntity
 import com.perez.dutchlearner.language.DutchTokenizer
+import kotlinx.coroutines.launch
 import java.text.SimpleDateFormat
 import java.util.*
+
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -101,6 +105,10 @@ fun PhrasesScreen(
                             onDelete = { onDeletePhrase(phrase) },
                             onSpeak = { onSpeakDutch(phrase.dutchText) },
                             onWordTap = onWordTap,
+                            onRetryTranslation = { phraseEntity ->  // ⬅️ Te falta pasar esto
+                                // Aquí va tu lógica de reintento
+                                // Por ahora vacío o llama a una función
+                            },
                             ttsReady = ttsReady
                         )
                     }
@@ -162,6 +170,7 @@ private fun PhraseCard(
     onDelete: () -> Unit,
     onSpeak: () -> Unit,
     onWordTap: (String) -> Unit,
+    onRetryTranslation: (PhraseEntity) -> Unit,
     ttsReady: Boolean
 ) {
     var showDeleteDialog by remember { mutableStateOf(false) }
@@ -205,6 +214,44 @@ private fun PhraseCard(
                     fontWeight = FontWeight.Bold,
                     color = MaterialTheme.colorScheme.tertiary
                 )
+                    if (phrase.dutchText.contains("[Sin traducción]") ||
+                        phrase.dutchText.contains("[error]") ||
+                        phrase.dutchText.contains("[sin traducción]")) {
+
+                        // Botón para reintentar traducción
+                        Button(
+                            onClick = { onRetryTranslation(phrase) },
+                            colors = ButtonDefaults.buttonColors(
+                                containerColor = MaterialTheme.colorScheme.secondary
+                            ),
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Icon(
+                                Icons.Default.Refresh,  // Icono de recargar
+                                contentDescription = "Reintentar traducción"
+                            )
+                            Spacer(modifier = Modifier.width(8.dp))
+                            Text("🔄 Traducir automáticamente")
+                        }
+
+                        // Mostrar el texto de error original
+                        Text(
+                            text = phrase.dutchText,
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = MaterialTheme.colorScheme.error
+                        )
+                    } else {
+                        // Texto normal con palabras tappables
+                        ClickableDutchText(
+                            text = phrase.dutchText,
+                            onWordClick = { word ->
+                                onWordTap(word)
+                                lastAddedWord = word
+                                showSnackbar = true
+                            }
+                        )
+                    }
+                }
 
                 if (isExpanded) {
                     // Mostrar palabras clickeables
@@ -286,7 +333,7 @@ private fun PhraseCard(
                 )
             }
         }
-    }
+
 
     // Diálogo de confirmación para eliminar
     if (showDeleteDialog) {
