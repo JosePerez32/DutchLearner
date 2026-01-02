@@ -26,6 +26,8 @@ import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
 import androidx.compose.foundation.clickable
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import com.perez.dutchlearner.audio.AudioRecorderHelper
 import com.perez.dutchlearner.database.AppDatabase
 import com.perez.dutchlearner.database.PhraseEntity
@@ -181,6 +183,11 @@ class MainActivity : ComponentActivity(), TextToSpeech.OnInitListener {
                     onWordTap = { word ->
                         lifecycleScope.launch {
                             addWordToUnknown(word)
+                        }
+                    },
+                    onRetryTranslation = { phrase ->
+                        lifecycleScope.launch {
+                            retryTranslation(phrase)
                         }
                     },
                     ttsReady = ttsReady
@@ -366,7 +373,8 @@ class MainActivity : ComponentActivity(), TextToSpeech.OnInitListener {
         Column(
             modifier = Modifier
                 .fillMaxSize()
-                .padding(24.dp),
+                .verticalScroll(rememberScrollState()),
+                //.padding(24.dp),
             horizontalAlignment = Alignment.CenterHorizontally,
             verticalArrangement = Arrangement.spacedBy(16.dp)
         ) {
@@ -931,15 +939,19 @@ class MainActivity : ComponentActivity(), TextToSpeech.OnInitListener {
     }
 
     private suspend fun retryTranslation(phrase: PhraseEntity) {
-        withContext(Dispatchers.IO) {
-            try {
+        try {
+            withContext(Dispatchers.IO) {
                 // Intentar traducir de nuevo
                 val result = translationService.translateToNL(phrase.spanishText)
 
                 result.onSuccess { dutchTranslation ->
                     // Actualizar solo el texto holandés
                     database?.phraseDao()?.updatePhrase(
-                        phrase.copy(dutchText = dutchTranslation)
+                        phrase.copy(
+                            dutchText = dutchTranslation,
+                            unknownWordsCount = 0, // Resetear porque ahora es diferente
+                            unknownWords = ""
+                        )
                     )
 
                     withContext(Dispatchers.Main) {
@@ -958,10 +970,11 @@ class MainActivity : ComponentActivity(), TextToSpeech.OnInitListener {
                         ).show()
                     }
                 }
-            } catch (e: Exception) {
-                e.printStackTrace()
             }
+        } catch (e: Exception) {
+            e.printStackTrace()
         }
     }
+
 }
 

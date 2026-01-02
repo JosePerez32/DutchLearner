@@ -305,6 +305,17 @@ private fun UnknownWordCard(
                         tint = MaterialTheme.colorScheme.error
                     )
                 }
+                IconButton(
+                    onClick = onSpeak,
+                    colors = IconButtonDefaults.iconButtonColors(
+                        contentColor = MaterialTheme.colorScheme.primary
+                    )
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.PlayArrow,  // Icono de parlante
+                        contentDescription = "Escuchar pronunciación"
+                    )
+                }
             }
         }
     }
@@ -335,42 +346,42 @@ private fun UnknownWordCard(
             }
         )
     }
-    Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
-        // NUEVO BOTÓN DE ESCUCHAR (altavoz)
-        IconButton(
-            onClick = onSpeak,
-            colors = IconButtonDefaults.iconButtonColors(
-                contentColor = MaterialTheme.colorScheme.primary
-            )
-        ) {
-            Icon(
-                imageVector = Icons.Default.PlayArrow,  // Icono de parlante
-                contentDescription = "Escuchar pronunciación"
-            )
-        }
-
-        if (!word.learned) {
-            IconButton(
-                onClick = onMarkAsLearned,
-                colors = IconButtonDefaults.iconButtonColors(
-                    contentColor = MaterialTheme.colorScheme.primary
-                )
-            ) {
-                Icon(
-                    imageVector = Icons.Default.Check,
-                    contentDescription = "Marcar como aprendida"
-                )
-            }
-        }
-
-        IconButton(onClick = { showDeleteDialog = true }) {
-            Icon(
-                imageVector = Icons.Default.Delete,
-                contentDescription = "Eliminar",
-                tint = MaterialTheme.colorScheme.error
-            )
-        }
-    }
+//    Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+//        // NUEVO BOTÓN DE ESCUCHAR (altavoz)
+//        IconButton(
+//            onClick = onSpeak,
+//            colors = IconButtonDefaults.iconButtonColors(
+//                contentColor = MaterialTheme.colorScheme.primary
+//            )
+//        ) {
+//            Icon(
+//                imageVector = Icons.Default.PlayArrow,  // Icono de parlante
+//                contentDescription = "Escuchar pronunciación"
+//            )
+//        }
+//
+//        if (!word.learned) {
+//            IconButton(
+//                onClick = onMarkAsLearned,
+//                colors = IconButtonDefaults.iconButtonColors(
+//                    contentColor = MaterialTheme.colorScheme.primary
+//                )
+//            ) {
+//                Icon(
+//                    imageVector = Icons.Default.Check,
+//                    contentDescription = "Marcar como aprendida"
+//                )
+//            }
+//        }
+//
+//        IconButton(onClick = { showDeleteDialog = true }) {
+//            Icon(
+//                imageVector = Icons.Default.Delete,
+//                contentDescription = "Eliminar",
+//                tint = MaterialTheme.colorScheme.error
+//            )
+//        }
+//    }
 }
 
 @Composable

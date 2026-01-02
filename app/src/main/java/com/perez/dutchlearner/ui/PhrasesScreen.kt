@@ -33,6 +33,7 @@ fun PhrasesScreen(
     onDeletePhrase: (PhraseEntity) -> Unit,
     onSpeakDutch: (String) -> Unit,
     onWordTap: (String) -> Unit,
+    onRetryTranslation: (PhraseEntity) -> Unit,
     ttsReady: Boolean
 ) {
     var expandedPhraseId by remember { mutableStateOf<Long?>(null) }
@@ -105,10 +106,11 @@ fun PhrasesScreen(
                             onDelete = { onDeletePhrase(phrase) },
                             onSpeak = { onSpeakDutch(phrase.dutchText) },
                             onWordTap = onWordTap,
-                            onRetryTranslation = { phraseEntity ->  // ⬅️ Te falta pasar esto
+                            //onRetryTranslation = { phraseEntity ->  // ⬅️ Te falta pasar esto
                                 // Aquí va tu lógica de reintento
                                 // Por ahora vacío o llama a una función
-                            },
+                            //},
+                            onRetryTranslation = onRetryTranslation,
                             ttsReady = ttsReady
                         )
                     }
@@ -242,34 +244,27 @@ private fun PhraseCard(
                         )
                     } else {
                         // Texto normal con palabras tappables
-                        ClickableDutchText(
-                            text = phrase.dutchText,
-                            onWordClick = { word ->
-                                onWordTap(word)
-                                lastAddedWord = word
-                                showSnackbar = true
-                            }
-                        )
+                        if (isExpanded) {
+                            // Mostrar palabras clickeables
+                            ClickableDutchText(
+                                text = phrase.dutchText,
+                                onWordClick = { word ->
+                                    onWordTap(word)
+                                    lastAddedWord = word
+                                    showSnackbar = true
+                                }
+                            )
+                        } else {
+                            // Mostrar texto normal
+                            Text(
+                                text = phrase.dutchText,
+                                style = MaterialTheme.typography.bodyLarge
+                            )
+                        }
                     }
                 }
 
-                if (isExpanded) {
-                    // Mostrar palabras clickeables
-                    ClickableDutchText(
-                        text = phrase.dutchText,
-                        onWordClick = { word ->
-                            onWordTap(word)
-                            lastAddedWord = word
-                            showSnackbar = true
-                        }
-                    )
-                } else {
-                    // Mostrar texto normal
-                    Text(
-                        text = phrase.dutchText,
-                        style = MaterialTheme.typography.bodyLarge
-                    )
-                }
+
             }
 
             // Palabras desconocidas (si hay)
